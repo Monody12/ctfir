@@ -85,3 +85,26 @@
 **CLI 冒烟（Win11）**：version/doctor/scan 端到端——session.json/module-results.json/findings.json/advice.json/events.jsonl/integrity.sha256 全产出，JSON 可解析，overall=COMPLETE，exit=0
 **Linux 静态产物**：ctfir `ff0d19c45412eec29b9d0e0b25e60cc1f321d4d12f5b5fc9f557a27f3e937281`、ctfir_tests `998821e43dd5b17cad76316204c2fc2d7c1f9229c4d3478d9df12ea27a708c67`（ldd 报非动态=纯静态 ✓）
 **开源仓库**：github.com/Monody12/ctfir 已建立（HTTP 201，MIT，ADR-007），首 commit 576255d 已推送
+
+## 2026-11-08 深夜 WP3（#16：Linux 纵向闭环 + 容器夹具）
+
+**模块落地（12 个）**：LNX.ACC / SSH / CRON / SHELL / PRELOAD / HOSTS / TRACE(L13) / SYSTEMD / ELF / PROC / SUID / LOG
+- 规则集：UID0.001、DUPUID.001、GID0.001、SUDOERS.001、AUTHKEY.001(+forced command 升级)、PRIVKEY.001（私钥仅存在性+哈希不采内容）、CONFIG.001、PERSIST.CRON.001、PERSIST.PROFILE.001、PERSIST.PRELOAD.001、HOSTS.MAP.001、TRACE.HISTORY.001、PERSIST.SYSTEMD.001、PERSIST.RCLOCAL.001、PROC.MINER.001、PROC.DELETED.001、SUID.UNEXPECTED.001、LOG.AUTHFAIL.001
+- 挖矿特征并入 cron/profile/proc（stratum+tcp/xmrig/kdevtmpfsi/kinsing 等 19 令牌表）
+- BusyBox 路径补全：/etc/crontabs（Alpine 系）
+
+**夹具集成测试（tests/fixture_linux.sh，一次性容器内）**：**24/24 PASS**
+- 负例 7 规则零误报（干净容器基线）
+- 正例 9 规则全命中（marker 夹具：UID0 用户/cron/ld.so.preload/hosts/profile/bash_history/authorized_keys/SUID/systemd unit）
+- 清理复验通过（findings 无 marker 残留）；HTML 无外链；report.html 产出
+- **fault 例（阶段4）**：nobody 运行 → exit=2、PERMISSION_DENIED×4 模块、overall=PARTIAL——"权限失败不 PASS" 引擎级强制生效（session.cpp 后置检查）
+
+**过程缺陷修复（均记入回归）**：
+1. `| tail` 吞退出码（三次）→ 构建脚本改文件存在性/显式 rc 判定
+2. 父目录不可读时 exists() 误报 not_found → errno 精确分类（denied/not_found/error），且 errno 必须在 open 失败后立即读取（先清零再读=恒 error 的低级错误）
+3. Finding 增加 object_ref 字段（PLAN §9.1 命名对齐），报告显示"位置"
+4. base64 手打表错位 → 计算式映射；表已程序化校验为错（234 项）后废弃
+5. /etc/hosts 是 docker bind-mount → 夹具清理用覆写而非 sed -i
+
+**双平台单测**：Windows 15/15、Linux 15/15；Windows scan 冒烟 exit=0 全产物齐
+**Linux 产物**：ctfir `e2735451c0d60d5ce2ac891ae4445e13e0bdb87ff55eaed3b96d1a539c366826`

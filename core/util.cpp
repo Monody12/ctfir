@@ -181,4 +181,35 @@ std::string sanitize_utf8(const std::string& s) {
     return out;
 }
 
+bool base64_decode(const std::string& in, std::string& out) {
+    // 计算式映射（避免手打表错误）：A-Z→0-25, a-z→26-51, 0-9→52-61, '+'→62, '/'→63
+    auto b64val = [](unsigned char c) -> int {
+        if (c >= 'A' && c <= 'Z') return c - 'A';
+        if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+        if (c >= '0' && c <= '9') return c - '0' + 52;
+        if (c == '+') return 62;
+        if (c == '/') return 63;
+        return -1;
+    };
+    out.clear();
+    uint32_t acc = 0;
+    int bits = 0;
+    int pad_seen = 0;
+    for (char ch : in) {
+        unsigned char c = static_cast<unsigned char>(ch);
+        if (c == '\n' || c == '\r' || c == ' ' || c == '\t') continue;
+        if (c == '=') { ++pad_seen; continue; }
+        if (pad_seen) return false; // 填充后又出现数据
+        int v = b64val(c);
+        if (v < 0) return false;
+        acc = (acc << 6) | static_cast<uint32_t>(v);
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            out += static_cast<char>((acc >> bits) & 0xFF);
+        }
+    }
+    return true;
+}
+
 } // namespace ctfir

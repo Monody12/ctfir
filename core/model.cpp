@@ -57,6 +57,7 @@ std::string finding_to_json(const Finding& f) {
     j["platform"] = f.platform;
     j["evidence_ids"] = jarr(f.evidence_ids);
     j["evidence_paths"] = jarr(f.evidence_paths);
+    j["object_ref"] = f.object_ref;
     j["rationale"] = f.rationale;
     j["severity"] = f.severity;
     j["confidence"] = f.confidence;

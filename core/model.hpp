@@ -35,6 +35,7 @@ struct Finding {
     std::string platform;             // windows / linux
     std::vector<std::string> evidence_ids;
     std::vector<std::string> evidence_paths;
+    std::string object_ref;          // 对象定位（文件:行 / 注册表路径 / PID 等）
     std::string rationale;            // 中文解释
     std::string severity;             // info / low / medium / high
     std::string confidence;           // low / medium / high

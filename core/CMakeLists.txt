@@ -17,6 +17,8 @@ else()
   target_sources(ctfir_core PRIVATE
     ../platform/linux/host_info.cpp
     ../platform/linux/modules.cpp
+    ../platform/linux/mod_a.cpp
+    ../platform/linux/mod_b.cpp
   )
 endif()
 if(MSVC)

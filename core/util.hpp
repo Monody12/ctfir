@@ -34,4 +34,7 @@ std::string escape_html(const std::string& s);
 // 一切进入 Evidence/Finding 字符串字段的外部文本必须先过此函数。
 std::string sanitize_utf8(const std::string& s);
 
+// 标准 base64 解码（容忍空白/填充缺失）；失败返回 false。
+bool base64_decode(const std::string& in, std::string& out);
+
 } // namespace ctfir

@@ -130,8 +130,10 @@ std::string build_html_report(const ScanSession& s,
           << " ｜ 证据信任 " << escape_html(f.evidence_trust)
           << " ｜ " << escape_html(f.finding_id) << "</span></p>\n";
         h << "<p><b>依据：</b>" << escape_html(f.rationale) << "</p>\n";
+        if (!f.object_ref.empty())
+            h << "<p class=\"meta\">位置：" << escape_html(f.object_ref) << "</p>\n";
         if (!f.evidence_paths.empty())
-            h << "<p class=\"meta\">位置：" << escape_html(join(f.evidence_paths, " ; ")) << "</p>\n";
+            h << "<p class=\"meta\">来源：" << escape_html(join(f.evidence_paths, " ; ")) << "</p>\n";
         for (const auto& eid : f.evidence_ids) {
             auto it = ev_by_id.find(eid);
             if (it != ev_by_id.end() && !it->second->payload.empty()) {

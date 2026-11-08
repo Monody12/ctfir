@@ -2,6 +2,8 @@
 #include "util.hpp"
 
 #include <algorithm>
+#include <cerrno>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 
@@ -40,9 +42,21 @@ ReadResult read_text_file(const std::string& utf8_path, size_t max_bytes) {
     std::ifstream f(utf8_path, std::ios::binary);
 #endif
     if (!f) {
+        // errno 精确分类：父目录不可读时 exists() 会误报 not_found（fault 例关键路径）
+        // errno 必须在失败 open 之后、任何其他调用之前读取
+        int e = errno;
+        r.error_detail = std::string("open failed (errno=") + std::to_string(e) + ")";
+#if defined(_WIN32)
+        (void)e;
         std::error_code ec;
         r.access_status = fs::exists(fs::u8path(utf8_path), ec) ? "denied" : "not_found";
-        r.error_detail = "open failed";
+        if (ec) r.access_status = "error";
+#else
+        if (e == ENOENT) r.access_status = "not_found";
+        else if (e == EACCES || e == EPERM) r.access_status = "denied";
+        else if (e == ELOOP) r.access_status = "error";  // 符号链接环
+        else r.access_status = "error";
+#endif
         return r;
     }
     std::string raw;

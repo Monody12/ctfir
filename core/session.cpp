@@ -1,5 +1,6 @@
 #include "session.hpp"
 #include "advice.hpp"
+#include "report.hpp"
 #include "util.hpp"
 #include <nlohmann/json.hpp>
 
@@ -190,6 +191,16 @@ void Session::run(const std::vector<ModuleDef>& mods) {
             else if (ctx.expired()) { mr.status = ModuleStatus::TIMEOUT; mr.status_note += "; budget exhausted"; }
             else { mr.status = ModuleStatus::ERROR; mr.errors.push_back("module returned non-terminal status"); }
         }
+        // 权限失败不 PASS（PLAN 硬门禁 T07/T19）：PASS 但存在被拒来源 → 升级为 PERMISSION_DENIED
+        if (mr.status == ModuleStatus::PASS) {
+            for (const auto& o : mr.omitted_sources) {
+                if (o.find("(PERMISSION_DENIED)") != std::string::npos) {
+                    mr.status = ModuleStatus::PERMISSION_DENIED;
+                    mr.status_note += "; 存在被拒来源，状态按权限受限计（发现仍保留）";
+                    break;
+                }
+            }
+        }
         if (mr.status == ModuleStatus::PASS && mr.has_findings) {
             mr.status_note += "; findings attached (module completed)";
         }
@@ -272,6 +283,13 @@ bool Session::write_outputs(std::string& err) {
             }
             os << "]\n";
             files.emplace_back("advice.json", os.str());
+        }
+        // 自包含 HTML 报告
+        {
+            auto advices = advices_for(findings_);
+            files.emplace_back("report.html",
+                               build_html_report(s_, evidence_, findings_, advices,
+                                                 beijing_time_str(now_utc_iso8601())));
         }
 
         std::string integrity;
