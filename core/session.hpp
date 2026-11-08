@@ -77,6 +77,9 @@ public:
     void request_cancel() { cancel_ = true; }
     bool cancelled() const { return cancel_; }
 
+    // UI 实时钩子：event(name, module_id, detail)；可在 run() 前设置（线程安全由使用方保证）
+    std::function<void(const std::string&, const std::string&, const std::string&)> event_hook;
+
     const ScanSession& session() const { return s_; }
     const std::vector<Evidence>& evidence() const { return evidence_; }
     const std::vector<Finding>& findings() const { return findings_; }

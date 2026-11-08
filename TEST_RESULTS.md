@@ -128,3 +128,15 @@
 - 过程缺陷：cmd 单行 errorlevel 解析期展开（早于 scan 执行）→ 换行分开取；bash printf 会吃反斜杠路径 → ssh 多行命令一律 stdin heredoc
 
 **双平台单测**：Windows 15/15（WP4 后回归）；导入审计含新链接库（netapi32/taskschd/wevtapi/iphlpapi/ws2_32 全为系统 DLL，仍零运行时依赖）
+
+## 2026-11-09 凌晨 WP5（#18：GUI 集成 + Win7 真机视觉验收）
+
+**GUI 实现**（apps/win-gui/main.cpp，Win32 原生）：顶栏(OS/SP/架构/权限/离线/只读标识)、输出目录选择(SHBrowseForFolder)、开始/取消(禁用态切换)、模块列表(状态/耗时/线索/说明含漏项计数)、发现列表(规则/风险/置信度/位置/依据)、详情(证据原文+限制+七段式建议)+复制建议(CF_UNICODETEXT)、日志区(事件流)、后台线程+Session::event_hook 实时刷新、`--scan` 自动开扫(测试用)、`--selftest` 自退。
+- 新增 Session::event_hook（UI 实时模块状态）；无任何修复/执行入口；双击不执行证据。
+
+**Win7 SP1 x64 视觉验收（mstsc + CUA 截图）**：
+- 通道：临时开启 RDP（fDenyTSConnections=0 + 防火墙规则，**已回滚**=1 + 规则禁用；登记于 TASKS 夹具表）
+- 验收截图确认：布局完整（940×680 默认，1024×768 RDP 内可用）、中文字体正常、顶栏识别 "Windows 7 Ultimate 6.1.7601 SP1 [x64] 权限 admin [离线] [只读模式]"、10 模块 PASS、hosts marker 命中显示于发现列表（WIN.HOSTS.MAP.001 low/medium hosts:23）、**自动选中首条发现 → 详情区完整展示证据+七段式建议**、日志 "COMPLETE 模块10 线索1 受限0 失败0"、报告写入提示
+- 干净基线复扫 0 findings（清理后）✓；导入审计 GUI=系统 DLL（零运行时）
+- CUA 经 RDP 的合成点击不稳定（技能已预警）；改用 schtasks /IT + `--scan` 自动化拉起 + 只读截图，视觉验收达成
+- 夹具清理：hosts.bak 恢复 ✓、ctfir-gui-show 任务删除 ✓、GUI 进程清理 ✓、RDP 回滚 ✓、cmdkey 凭据删除 ✓

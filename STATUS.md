@@ -1,6 +1,6 @@
 # STATUS
 
-- 阶段：**批量执行中——WP4 完成，WP5(GUI) 进行中**（[BATCH-PLAN-M1M5.md](BATCH-PLAN-M1M5.md)）
+- 阶段：**批量执行中——WP5 完成，WP6(CLI契约) 进行中**（[BATCH-PLAN-M1M5.md](BATCH-PLAN-M1M5.md)）
 - 最后更新：2026-11-08 深夜（北京时间）
 
 ## 已完成

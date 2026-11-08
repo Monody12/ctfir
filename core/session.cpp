@@ -141,6 +141,10 @@ bool Session::prepare_out_dir(std::string& reason) {
 }
 
 void Session::event(const std::string& name, const std::string& module_id, const std::string& detail) {
+    if (event_hook) {
+        std::string d = detail;
+        try { event_hook(name, module_id, d); } catch (...) { /* UI 回调异常不阻断扫描 */ }
+    }
     if (!events_stream_) return;
     std::ofstream& os = *static_cast<std::ofstream*>(events_stream_);
     os << "{\"ts_utc\":\"" << now_utc_iso8601() << "\",\"event\":\"" << name
