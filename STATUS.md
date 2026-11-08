@@ -1,6 +1,6 @@
 # STATUS
 
-- 阶段：**批量执行中——WP3 完成，WP4 进行中**（[BATCH-PLAN-M1M5.md](BATCH-PLAN-M1M5.md)）
+- 阶段：**批量执行中——WP4 完成，WP5(GUI) 进行中**（[BATCH-PLAN-M1M5.md](BATCH-PLAN-M1M5.md)）
 - 最后更新：2026-11-08 深夜（北京时间）
 
 ## 已完成
@@ -11,6 +11,7 @@
 | WP1 | nlohmann v3.12.0 锁版(ADR-008)；CMake+Ninja 工程；导入审计零运行时 | #15 |
 | WP2 | schema/模型/scheduler/安全读取 + 单测 **双平台 15/15** | #15 |
 | WP3 | Linux 12 模块 + 18 规则；容器夹具 **24/24**（正/负/fault/清理） | #16 |
+| WP4 | Windows 10 模块 + 17 规则；Win7 真机夹具 **6/6 命中 0 残留** | #17 |
 
 ## 当前 WP4 精确下一步
 

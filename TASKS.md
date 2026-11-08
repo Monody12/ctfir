@@ -35,6 +35,11 @@
 
 | 日期 | 对象 | 用途 | 清理状态 |
 |---|---|---|---|
-| （暂无） | | | |
+| 2026-11-09 | ctfir-marker-task（计划任务） | W03 正例 | 已删除 |
+| 2026-11-09 | ctfir-marker（用户+Administrators） | W01 正例 | 已删除 |
+| 2026-11-09 | ctfir-marker-svc（服务 binPath→Temp） | W04 正例 | 已删除 |
+| 2026-11-09 | UserList\ctfir-marker (DWORD) | W02 正例 | 已删除 |
+| 2026-11-09 | HKLM Run\ctfir-marker | W05 正例 | 已删除 |
+| 2026-11-09 | hosts: 10.66.0.66 ctfir-marker.local | W06 正例 | hosts.bak 恢复 |
 
 备注：M0 在 Win7 VM 仅建立 `C:\ctfir-test\` 部署目录并运行只读 PoC（未建夹具）。

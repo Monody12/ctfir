@@ -108,3 +108,23 @@
 
 **双平台单测**：Windows 15/15、Linux 15/15；Windows scan 冒烟 exit=0 全产物齐
 **Linux 产物**：ctfir `e2735451c0d60d5ce2ac891ae4445e13e0bdb87ff55eaed3b96d1a539c366826`
+
+## 2026-11-09 凌晨 WP4（#17：Windows 纵向闭环 + Win7 真机夹具）
+
+**模块落地（10 个全部实现）**：WIN.ACC / LOGINHIDE / SVC / AUTORUN(+AppInit/Notify/LSA/PrintProc/IFEO) / HOSTS / HASHES(sethc等12文件) / TASKS(COM递归含隐藏) / PROCNET(TCP/UDP owner表) / EVTLOG(4624/4625) / WEB(W13 三规则)
+- 规则：WIN.ACC.ADMIN.001(RID>1000进管理员组)、WIN.ACC.DOLLAR.001、WIN.ACC.LOGIN_HIDE.001、WIN.SVC.SUSPECT.001/UNQUOTED.001、WIN.AUTORUN.SUSPECT/WRITABLE/WINLOGON/APPINIT/IFEO/LSA.001、WIN.HOSTS.MAP.001、WIN.TASK.SUSPECT.001、WIN.PROC.MINER.001、WIN.EVT.AUTHFAIL.001、WIN.WEB.WEBSHELL.001/LOGPOST.001
+- 管理员组按 SID(S-1-5-32-544) 定位（本地化安全）；IFEO Debugger 全子键扫描；IIS 日志按 #Fields 列序解析 cs-method/c-ip
+
+**Win7 SP1 x64 真机夹具测试（六件套 ctfir-marker）**：**6/6 命中、清理后 0 残留**
+- 管理员组加 marker 用户 → WIN.ACC.ADMIN.001
+- UserList 隐藏值 → WIN.ACC.LOGIN_HIDE.001
+- 服务 binPath 指向 Temp → WIN.SVC.SUSPECT.001
+- HKLM Run 指向 Temp → WIN.AUTORUN.WRITABLE.001
+- hosts 10.66.0.66 → marker 域 → WIN.HOSTS.MAP.001 (hosts:23)
+- 计划任务(动作指向 Temp) → WIN.TASK.SUSPECT.001（COM 枚举 7601 正常）
+- 夹具操作全部经 ssh（引号命令走 stdin heredoc 绕 MSYS 转换）；hosts 改前备份 hosts.bak、改后恢复
+- 清理六项后复扫：0 findings（干净基线）；夹具登记见 TASKS.md
+- Win11 开发机真扫：10/10 模块 PASS、20 findings（全部为开发机合法项）
+- 过程缺陷：cmd 单行 errorlevel 解析期展开（早于 scan 执行）→ 换行分开取；bash printf 会吃反斜杠路径 → ssh 多行命令一律 stdin heredoc
+
+**双平台单测**：Windows 15/15（WP4 后回归）；导入审计含新链接库（netapi32/taskschd/wevtapi/iphlpapi/ws2_32 全为系统 DLL，仍零运行时依赖）
