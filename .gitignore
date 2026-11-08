@@ -1,0 +1,8 @@
+# 构建产物
+poc/win/*.exe
+poc/win/*.obj
+poc/linux/ctfir-poc-linux
+build/
+out/
+session-*/
+*.log

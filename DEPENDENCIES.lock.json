@@ -1,0 +1,32 @@
+{
+  "_comment": "依赖锁（T03 完成前为草稿）。正式条目须含：精确版本、上游URL、内容SHA256、许可证、使用方式、是否修改。",
+  "status": "draft",
+  "locked_at": null,
+  "items": [
+    {
+      "name": "nlohmann/json",
+      "version_candidate": "3.11.3",
+      "license": "MIT",
+      "upstream_url": "https://github.com/nlohmann/json",
+      "content_sha256": null,
+      "review_status": "PENDING_T03（安全公告核查+编译核查后锁定）"
+    },
+    {
+      "name": "musl (经 Alpine g++/musl-dev 静态链接)",
+      "version_candidate": "随 alpine:3.20 镜像 tag 固定",
+      "license": "MIT",
+      "review_status": "PENDING_T03"
+    },
+    {
+      "name": "MSVC v143 CRT (/MT 静态)",
+      "version": "14.44.35207",
+      "license": "微软 Visual Studio 许可（随 VS2022 BuildTools）",
+      "review_status": "随工具链使用；分发说明在发布清单落实"
+    }
+  ],
+  "prohibited": [
+    "GScan 任何源码/规则（许可未确认）",
+    "Sysinternals 二进制（Autoruns/Sigcheck）",
+    "来路不明 DLL / 系统组件再分发"
+  ]
+}
