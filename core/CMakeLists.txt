@@ -23,6 +23,7 @@ else()
     ../platform/linux/mod_a.cpp
     ../platform/linux/mod_b.cpp
     ../platform/linux/mod_c.cpp
+    ../platform/linux/mod_d.cpp
   )
 endif()
 if(MSVC)
