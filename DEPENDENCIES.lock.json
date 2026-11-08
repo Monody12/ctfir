@@ -1,27 +1,44 @@
 {
-  "_comment": "依赖锁（T03 完成前为草稿）。正式条目须含：精确版本、上游URL、内容SHA256、许可证、使用方式、是否修改。",
-  "status": "draft",
-  "locked_at": null,
+  "_comment": "依赖锁（正式）。任何变更须先过许可/安全公告核查并改此文件+THIRD_PARTY_NOTICES。哈希为内容 SHA256。",
+  "locked_at": "2026-11-08T00:00:00Z",
   "items": [
     {
       "name": "nlohmann/json",
-      "version_candidate": "3.11.3",
+      "version": "3.12.0",
       "license": "MIT",
       "upstream_url": "https://github.com/nlohmann/json",
-      "content_sha256": null,
-      "review_status": "PENDING_T03（安全公告核查+编译核查后锁定）"
+      "pinned_ref": "v3.12.0",
+      "files": [
+        {
+          "path": "third_party/nlohmann/json.hpp",
+          "sha256": "aaf127c04cb31c406e5b04a63f1ae89369fccde6d8fa7cdda1ed4f32dfc5de63"
+        },
+        {
+          "path": "licenses/nlohmann-json-MIT.txt",
+          "sha256": "46a65cffd1ea955132d95a8dd921640714a8d6b537d2e4e482d31145ae95b603"
+        }
+      ],
+      "usage": "single_include 头文件直接包含；仅用于自产数据与证据摘要序列化，不解析目标机任意 JSON",
+      "modified": false,
+      "review": {
+        "date": "2026-11-08",
+        "decision": "ADR-008：由候选 v3.11.3 升至 v3.12.0——3.12.0 修复 3.11.3 存在的安全相关 CBOR/MessagePack 解析缺陷（OSS-Fuzz）。本项目不使用 CBOR/MsgPack，另在解析入口限大小（见 KNOWN_LIMITATIONS）。",
+        "sources": "github.com/nlohmann/json/security/advisories；3.12.0 release notes"
+      }
     },
     {
-      "name": "musl (经 Alpine g++/musl-dev 静态链接)",
-      "version_candidate": "随 alpine:3.20 镜像 tag 固定",
-      "license": "MIT",
-      "review_status": "PENDING_T03"
+      "name": "musl libc + g++ (Alpine 3.20)",
+      "version": "alpine:3.20 镜像 digest d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+      "license": "MIT (musl); GPL (g++ 构建工具，不随产物分发)",
+      "usage": "静态链接构建宿主；产物不含 g++/musl 动态组件",
+      "modified": false
     },
     {
-      "name": "MSVC v143 CRT (/MT 静态)",
+      "name": "MSVC v143 toolset + /MT CRT",
       "version": "14.44.35207",
-      "license": "微软 Visual Studio 许可（随 VS2022 BuildTools）",
-      "review_status": "随工具链使用；分发说明在发布清单落实"
+      "license": "Microsoft Visual Studio 许可",
+      "usage": "静态 CRT；不随包再分发系统 DLL",
+      "modified": false
     }
   ],
   "prohibited": [

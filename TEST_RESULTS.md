@@ -66,3 +66,22 @@
 - 实验：白名单目录内重建 GUI PE → LINKED → 2s/10s/30s 全 GONE。
 - 定案：**删除者=360 云查杀引擎**（对无信誉新编译 GUI PE 云端判杀，不受文件白名单/文件系统防护开关约束，且 UI 不可关）。
 - 待办：用户彻底卸载 360 + 重启 → 复测 #8（C盘PE）/ #9（bat调vcvars）两项，通过后可将产物目录迁回仓库（或保留 D:\ctfir-build，见 STATUS 决策）。
+
+## 2026-11-08 深夜 WP1/WP2（#15：依赖锁 + CMake 工程 + 引擎单测）
+
+**依赖锁（T03）**：nlohmann/json **v3.12.0**（ADR-008，公告核查：3.12.0 修复 3.11.3 的 CBOR/MsgPack 安全缺陷）
+- json.hpp sha256 `aaf127c04cb31c406e5b04a63f1ae89369fccde6d8fa7cdda1ed4f32dfc5de63`
+- LICENSE.MIT sha256 `46a65cffd1ea955132d95a8dd921640714a8d6b537d2e4e482d31145ae95b603`
+
+**构建工程（WP1）**：CMake+Ninja 正式化
+- 坑与解法：单行 cmd 中 `%PATH%` 解析期展开（早于 vcvars）→ **禁止 set PATH**，cmake/ninja 用 8.3 短路径直呼（scripts/build-win.sh 注释）
+- 产物目录：`D:\ctfir-build\cmake-build`（CMAKE_RUNTIME_OUTPUT_DIRECTORY=构建根）
+- **导入审计 PASS**：ctfir.exe = KERNEL32+ADVAPI32；ctfir-gui.exe = USER32+SHELL32+KERNEL32；ctfir_tests = KERNEL32 —— 零运行时依赖 ✓
+
+**引擎单测（WP2）**：**Windows 15/15 PASS；Linux(Alpine 静态) 15/15 PASS**
+- 覆盖：SHA-256 NIST 向量（empty/abc/1M×'a'）+ **填充边界向量 'x'×55..65（与 certutil 独立实现交叉验证固化）**、流式=一次性、UTF-8 校验/清洗、安全读文件（缺文件/截断/非UTF8）、模型 roundtrip、**未知 schema 拒绝**、状态机（异常→ERROR、取消→SKIPPED+会话 CANCELLED、超预算兜底 TIMEOUT、PARTIAL 判定）、建议注册校验、报告转义（`<script>` 必须转义）、JSON 终报可解析
+- 过程缺陷修复：run() 返回值曾覆盖 ctx 变更（签名改 void(ModuleCtx&)）；schema 校验逻辑简化为精确匹配；56 字节 NIST 串凭记忆键入有误→以 certutil 锚定向量替代并记录
+
+**CLI 冒烟（Win11）**：version/doctor/scan 端到端——session.json/module-results.json/findings.json/advice.json/events.jsonl/integrity.sha256 全产出，JSON 可解析，overall=COMPLETE，exit=0
+**Linux 静态产物**：ctfir `ff0d19c45412eec29b9d0e0b25e60cc1f321d4d12f5b5fc9f557a27f3e937281`、ctfir_tests `998821e43dd5b17cad76316204c2fc2d7c1f9229c4d3478d9df12ea27a708c67`（ldd 报非动态=纯静态 ✓）
+**开源仓库**：github.com/Monody12/ctfir 已建立（HTTP 201，MIT，ADR-007），首 commit 576255d 已推送
