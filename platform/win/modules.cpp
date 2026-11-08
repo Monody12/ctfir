@@ -1,10 +1,18 @@
-// Windows 采集模块注册（WP4 填充；当前空表保证工程可构建）
-#include "platform/modules_registry.hpp"
+// Windows 模块注册聚合
+#include "win_common.hpp"
+
+namespace ctfir::win {
+void register_mods_w1(std::vector<Session::ModuleDef>& mods);
+void register_mods_w2(std::vector<Session::ModuleDef>& mods);
+} // namespace ctfir::win
 
 namespace ctfir {
+
 std::vector<Session::ModuleDef> build_platform_modules() {
     std::vector<Session::ModuleDef> mods;
-    // W01..W13 在 WP4 注册于此
+    ctfir::win::register_mods_w1(mods);
+    ctfir::win::register_mods_w2(mods);
     return mods;
 }
+
 } // namespace ctfir

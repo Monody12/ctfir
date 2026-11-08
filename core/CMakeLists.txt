@@ -12,6 +12,8 @@ if(WIN32)
   target_sources(ctfir_core PRIVATE
     ../platform/win/host_info.cpp
     ../platform/win/modules.cpp
+    ../platform/win/mod_w.cpp
+    ../platform/win/mod_w2.cpp
   )
 else()
   target_sources(ctfir_core PRIVATE
