@@ -170,6 +170,23 @@ std::string build_html_report(const ScanSession& s,
     if (!any) h << "<tr><td colspan=\"3\">（声明范围内无未完成项）</td></tr>\n";
     h << "</table>\n";
 
+    // —— 处置手册（按本次发现涉及类型聚合）——
+    {
+        std::map<std::string, const Advice*> used;
+        for (const auto& f : fds) {
+            const Advice* a = find_advice(f.advice_id);
+            if (a) used[a->id] = a;
+        }
+        if (!used.empty()) {
+            h << "<h2>处置手册（六步制；全部为文本，工具不执行）</h2>\n";
+            for (const auto& [id, a] : used) {
+                h << "<div class=\"card\"><p><b>" << escape_html(a->title) << "</b> <span class=\"meta\">"
+                  << escape_html(id) << "</span></p>\n<div class=\"advice\">" << escape_html(a->text)
+                  << "</div></div>\n";
+            }
+        }
+    }
+
     // —— 证据清单 ——
     h << "<h2>证据清单（" << ev.size() << "）</h2>\n<table><tr><th>ID</th><th>来源</th><th>位置</th><th>访问</th><th>SHA256</th><th>留证文件</th></tr>\n";
     for (const auto& e : ev) {
