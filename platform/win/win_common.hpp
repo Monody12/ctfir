@@ -170,6 +170,42 @@ inline void for_each_line(const std::string& content, F cb) {
     for (size_t i = 0; i < lines.size(); ++i) cb(static_cast<int>(i + 1), lines[i]);
 }
 
+// 从命令行文本提取引用的 Windows 路径（引号段优先 + X:\ 起点扫描；无正则）。
+// 覆盖 A7C9-W03 类形态：cmd /c ""C:\dir\x.cmd""（嵌套引号）、参数裸路径。
+inline std::vector<std::string> extract_paths(const std::string& cmdline_utf8) {
+    std::vector<std::string> out;
+    const std::string& s = cmdline_utf8;
+    size_t i = 0, n = s.size();
+    while (i < n) {
+        char c = s[i];
+        if (c == '"') {
+            // 引号段：整段当候选路径（可能含参数，再细分）
+            size_t j = i + 1;
+            std::string seg;
+            while (j < n && s[j] != '"') { seg += s[j]; ++j; }
+            // 引号段内再扫 X:\ 起点
+            for (const auto& p : extract_paths(seg)) out.push_back(p);
+            if (!seg.empty() && seg.find(':') == std::string::npos && seg.find('\\') != std::string::npos)
+                out.push_back(seg); // 相对形式如 \dir\x
+            i = (j < n) ? j + 1 : n;
+            continue;
+        }
+        // 裸路径：字母 + ':' + '\' 起点
+        if (((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) && i + 2 < n &&
+            s[i + 1] == ':' && (s[i + 2] == '\\' || s[i + 2] == '/')) {
+            size_t j = i;
+            std::string path;
+            while (j < n && s[j] != ' ' && s[j] != '"' && s[j] != ',') { path += s[j]; ++j; }
+            out.push_back(path);
+            i = j;
+            continue;
+        }
+        // 反斜杠开头的绝对形式 \dir\x（跟随在引号内已处理；此处跳过）
+        ++i;
+    }
+    return out;
+}
+
 // 读文件证据（宽路径已在 core/evidence 处理 UTF-8 → 直接用）
 inline ReadResult read_file(ModuleCtx& ctx, const std::string& path, size_t cap = 4 * 1024 * 1024) {
     ctx.planned_source(path);

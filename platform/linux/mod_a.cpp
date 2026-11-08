@@ -408,7 +408,21 @@ void mod_hosts(ModuleCtx& ctx) {
             // 发行版默认本地条目（含 IPv6 本地名）不算映射
             if (name == "localhost" || name == "localhost.localdomain" ||
                 starts_with(name, "ip6-")) continue;
-            if (ip == "127.0.0.1" || ip == "::1" || starts_with(name, "localhost")) continue;
+            bool loopback = (ip == "127.0.0.1" || ip == "::1" || starts_with(ip, "127."));
+            if (loopback) {
+                // A7C9-W05 同构：回环绑定非常规名仍是线索
+                Finding f;
+                f.rule_id = "LNX.HOSTS.LOOPBACK.001";
+                f.severity = "low";
+                f.confidence = "medium";
+                f.rationale = "本机回环绑定非常规名: " + ip + " -> " + name +
+                              "（本地测试/屏蔽常见；陌生域名需核实）";
+                f.object_ref = "/etc/hosts:" + std::to_string(no);
+                f.advice_id = "ADVICE.HOSTS.REVIEW.001";
+                ctx.add_finding(f);
+                continue;
+            }
+            if (starts_with(name, "localhost")) continue;
             Finding f;
             f.rule_id = "LNX.HOSTS.MAP.001";
             f.severity = "low";

@@ -137,12 +137,14 @@ void mod_loginhide(ModuleCtx& ctx) {
     std::string listing;
     for (const auto& v : vals) {
         listing += v.name + "=" + v.data + "(" + v.type + ") ";
-        if (v.type == "REG_DWORD" && v.data != "0" && v.name.find("$") == std::string::npos) {
+        // 语义（A7C9-W02 回归）：UserList DWORD **0 = 登录界面隐藏**，1 = 显式显示
+        if (v.type == "REG_DWORD" && v.data == "0") {
             Finding f;
             f.rule_id = "WIN.ACC.LOGIN_HIDE.001";
             f.severity = "low";
-            f.confidence = "medium";
-            f.rationale = "登录界面隐藏账户: " + v.name + "（服务账户隐藏属常见；与 W01 账户清单对照）";
+            f.confidence = "high";
+            f.rationale = "登录界面隐藏账户: " + v.name + "（UserList=0）；服务账户隐藏属常见，"
+                          "需与账户清单/禁用状态/管理员组关联判断";
             f.object_ref = "HKLM\\" + wide_to_utf8(sub) + "\\" + v.name;
             f.limitations = {"UI 隐藏 ≠ SAM 隐藏；深层 SAM 专题属 W11(未实现)"};
             f.advice_id = "ADVICE.LOGIN_HIDE.REVIEW.001";
@@ -280,6 +282,22 @@ static void scan_run_key(ModuleCtx& ctx, HKEY root, const std::wstring& sub, boo
             f.limitations = {"调试/运维工具常见，需人工核对"};
             f.advice_id = "ADVICE.AUTORUN.REVIEW.001";
             ctx.add_finding(f);
+        } else {
+            // 引用路径分析（A7C9-W03 回归）：cmd /c ""C:\CTF-Test\harmless.cmd"" 类形态——
+            // 主路径在 System32 但参数里引用了外部脚本
+            for (const auto& rp : extract_paths(v.data)) {
+                if (is_expected_path(rp)) continue;
+                Finding f;
+                f.rule_id = "WIN.AUTORUN.REFPATH.001";
+                f.severity = "medium";
+                f.confidence = "medium";
+                f.rationale = "自启动引用非常规路径: " + rp.substr(0, 150) +
+                              "（值名 " + v.name + "）——需人工核对被引用脚本/程序内容";
+                f.object_ref = label + "\\" + v.name;
+                f.advice_id = "ADVICE.AUTORUN.REVIEW.001";
+                ctx.add_finding(f);
+                break; // 每值一条防刷屏
+            }
         }
     }
     Evidence e;
@@ -471,25 +489,48 @@ void mod_hosts(ModuleCtx& ctx) {
         ctx.set_status(ModuleStatus::PASS);
         return;
     }
+    int zero_sink = 0;  // 0.0.0.0 沉坑计数（屏蔽列表惯例；聚合避免刷屏）
     for_each_line(r.content, [&](int no, const std::string& line) {
         std::string t = trim(line);
         if (t.empty() || t[0] == '#') return;
         std::istringstream is(t);
         std::string ip, name;
         if (!(is >> ip)) return;
+        bool loopback = (ip == "127.0.0.1" || ip == "::1" || starts_with(ip, "127."));
+        if (ip == "0.0.0.0") {
+            // 沉坑屏蔽：聚合计数，不逐条报
+            for (std::string nm; is >> nm;) {
+                if (!starts_with(nm, "localhost") && !starts_with(nm, "ip6-")) ++zero_sink;
+            }
+            return;
+        }
         while (is >> name) {
-            if (name == "localhost" || starts_with(name, "ip6-") || starts_with(name, "localhost")) continue;
-            if (ip == "127.0.0.1" || ip == "::1") continue;
-            Finding f;
-            f.rule_id = "WIN.HOSTS.MAP.001";
-            f.severity = "low";
-            f.confidence = "medium";
-            f.rationale = "hosts 非默认映射: " + ip + " -> " + name + "（无基线仅列证据）";
-            f.object_ref = p + ":" + std::to_string(no);
-            f.advice_id = "ADVICE.HOSTS.REVIEW.001";
-            ctx.add_finding(f);
+            if (starts_with(name, "localhost") || starts_with(name, "ip6-")) continue;
+            if (loopback) {
+                // A7C9-W05 回归：127.0.0.1 绑定非常规名仍是值得核实的线索
+                Finding f;
+                f.rule_id = "WIN.HOSTS.LOOPBACK.001";
+                f.severity = "low";
+                f.confidence = "medium";
+                f.rationale = "本机回环绑定非常规名: " + ip + " -> " + name +
+                              "（本地测试/屏蔽常见；陌生域名需核实）";
+                f.object_ref = p + ":" + std::to_string(no);
+                f.advice_id = "ADVICE.HOSTS.REVIEW.001";
+                ctx.add_finding(f);
+            } else {
+                Finding f;
+                f.rule_id = "WIN.HOSTS.MAP.001";
+                f.severity = "low";
+                f.confidence = "medium";
+                f.rationale = "hosts 非默认映射: " + ip + " -> " + name + "（无基线仅列证据）";
+                f.object_ref = p + ":" + std::to_string(no);
+                f.advice_id = "ADVICE.HOSTS.REVIEW.001";
+                ctx.add_finding(f);
+            }
         }
     });
+    if (zero_sink > 0)
+        ctx.note("hosts 含 " + std::to_string(zero_sink) + " 条 0.0.0.0 沉坑（屏蔽列表惯例；如需逐条人工核对）");
     ctx.set_status(ModuleStatus::PASS);
 }
 
