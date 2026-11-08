@@ -2,6 +2,7 @@
 #include "util.hpp"
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <map>
 #include <sstream>
 
@@ -88,7 +89,31 @@ std::string build_html_report(const ScanSession& s,
          ".warn{background:#fff8e1;border:1px solid #ffe082;padding:8px 12px;border-radius:4px;font-size:13px}\n"
          ".ok{color:#2e7d32}.bad{color:#c62828}\n"
          ".advice{background:#eef3ff;border:1px solid #c5cae9;padding:8px 12px;border-radius:4px;white-space:pre-wrap;font-size:13px}\n"
-         "</style>\n</head>\n<body>\n";
+         ".toolbar{position:sticky;top:0;background:#fff;padding:6px 0;border-bottom:1px solid #eee;z-index:9}\n"
+         ".toolbar input,.toolbar button{font-size:13px;padding:3px 8px;margin-right:6px}\n"
+         "</style>\n"
+      // 内联 vanilla JS（零外部资源）：严重度筛选 + 文本搜索 + 折叠
+      << "<script>\n"
+         "function applyFilter(){\n"
+         "  var q=document.getElementById('q').value.toLowerCase();\n"
+         "  var sev=document.getElementById('sev').value;\n"
+         "  document.querySelectorAll('.fcard').forEach(function(el){\n"
+         "    var okSev=(sev==='all')||(el.getAttribute('data-sev')===sev);\n"
+         "    var okQ=(q==='')||(el.textContent.toLowerCase().indexOf(q)>=0);\n"
+         "    el.style.display=(okSev&&okQ)?'':'none';\n"
+         "  });\n"
+         "}\n"
+         "function collapseAll(v){document.querySelectorAll('.fcard .evblock').forEach(function(el){el.style.display=v?'none':'';});}\n"
+         "</script>\n"
+      << "</head>\n<body>\n";
+
+    h << "<div class=\"toolbar\">筛选: <select id=\"sev\" onchange=\"applyFilter()\">"
+         "<option value=\"all\">全部</option><option value=\"high\">high</option>"
+         "<option value=\"medium\">medium</option><option value=\"low\">low</option>"
+         "<option value=\"info\">info</option></select>"
+         "搜索: <input id=\"q\" oninput=\"applyFilter()\" placeholder=\"规则/位置/依据…\">"
+         "<button onclick=\"collapseAll(true)\">折叠证据</button>"
+         "<button onclick=\"collapseAll(false)\">展开证据</button></div>\n";
 
     h << "<h1>ctfir 只读应急扫描报告</h1>\n";
     h << "<p class=\"meta\">会话 " << escape_html(s.session_id)
@@ -124,7 +149,7 @@ std::string build_html_report(const ScanSession& s,
     if (fds.empty()) h << "<p>声明范围内未命中规则。这不等于系统安全（见未完成检查与限制）。</p>\n";
     for (size_t i = 0; i < fds.size(); ++i) {
         const auto& f = fds[i];
-        h << "<div class=\"card\"><p><b>" << (i + 1) << ". " << escape_html(f.rule_id) << "</b> "
+        h << "<div class=\"card fcard\" data-sev=\"" << escape_html(f.severity) << "\"><p><b>" << (i + 1) << ". " << escape_html(f.rule_id) << "</b> "
           << sev_badge(f.severity)
           << " <span class=\"meta\">置信度 " << escape_html(f.confidence)
           << " ｜ 证据信任 " << escape_html(f.evidence_trust)
@@ -140,7 +165,7 @@ std::string build_html_report(const ScanSession& s,
                 h << "<p class=\"meta\">证据 " << escape_html(eid)
                   << "（" << escape_html(it->second->source_path)
                   << (it->second->line_context.empty() ? "" : " @ " + escape_html(it->second->line_context))
-                  << "）：</p>\n<pre>" << escape_html(it->second->payload) << "</pre>\n";
+                  << "）：</p>\n<pre class=\"evblock\">" << escape_html(it->second->payload) << "</pre>\n";
             }
         }
         if (!f.limitations.empty())
@@ -169,6 +194,28 @@ std::string build_html_report(const ScanSession& s,
     }
     if (!any) h << "<tr><td colspan=\"3\">（声明范围内无未完成项）</td></tr>\n";
     h << "</table>\n";
+
+    // —— 时间线（从证据载荷提取日期开头行，排序去重）——
+    {
+        std::vector<std::string> lines;
+        for (const auto& e : ev) {
+            for (const auto& l : split_lines(e.payload)) {
+                if (l.size() >= 16 && l[4] == '-' && l[7] == '-' && l[10] == ' ' && l[13] == ':')
+                    lines.push_back(l);
+            }
+        }
+        std::sort(lines.begin(), lines.end());
+        lines.erase(std::unique(lines.begin(), lines.end()), lines.end());
+        if (!lines.empty()) {
+            h << "<h2>时间线（证据内带时间戳行，升序；" << lines.size() << " 条</h2>\n<pre>";
+            size_t shown = 0;
+            for (const auto& l : lines) {
+                if (++shown > 300) { h << "...[超 300 条截断]\n"; break; }
+                h << escape_html(l) << "\n";
+            }
+            h << "</pre>\n";
+        }
+    }
 
     // —— 处置手册（按本次发现涉及类型聚合）——
     {

@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -98,13 +99,105 @@ static int cmd_doctor() {
     return 0;
 }
 
+// 应急响应 15 分钟总纲（内置离线帮助）
+static int cmd_help() {
+    std::printf(
+        "ctfir %s — 应急响应 15 分钟总纲（配合本工具使用）\n"
+        "==============================================\n"
+        "拿到一台可疑机器后按此顺序处置（每步都可被 ctfir 覆盖）：\n"
+        " 1. 存活现场：先取证（截图/内存如授权），不要急着重启\n"
+        " 2. 进程与网络:   ctfir scan --out . --profile quick  → 看 WIN.PROCNET/WIN.PROCCMD/LNX.PROC\n"
+        " 3. 账户:         看 WIN.ACC/LNX.ACC（隐藏/UID0/管理员组/4720 时间线）\n"
+        " 4. 持久化:       任务/服务/启动项/cron/systemd/登录脚本\n"
+        " 5. 登录日志:     WIN.EVTLOG(4624/4625/4720-4732) / LNX.LOGINS/LNX.LOG\n"
+        " 6. Web 痕迹:     WIN.WEB / LNX.WEB（webshell 特征 + POST Top IP）\n"
+        " 7. 执行痕迹:     Prefetch/ShimCache/bash_history/wtmp\n"
+        " 8. 文件巡检:     --dir 自定目录 + --baseline 基线比对\n"
+        " 9. 处置:         按报告\"处置手册\"六步执行（停用先于删除）\n"
+        "10. 复查:         处置后重扫 + ctfir diff --a 旧 --b 新 确认变化\n"
+        "\n速查手册: ctfir playbook <user|task|service|process|startup|hosts|sshkey|cron|profile|preload|webshell|hash|log>\n"
+        "红线: 本工具只读，一切修改按手册人工执行。\n",
+        kToolVersion);
+    return 0;
+}
+
+// playbook：离线速查手册
+static int cmd_playbook(int argc, char** argv) {
+    static const std::pair<const char*, const char*> map[] = {
+        {"user", "ADVICE.ACC.REVIEW.001"},       {"account", "ADVICE.ACC.REVIEW.001"},
+        {"logonhide", "ADVICE.LOGIN_HIDE.REVIEW.001"}, {"task", "ADVICE.TASK.REVIEW.001"},
+        {"service", "ADVICE.SVC.REVIEW.001"},    {"startup", "ADVICE.AUTORUN.REVIEW.001"},
+        {"autorun", "ADVICE.AUTORUN.REVIEW.001"},{"hosts", "ADVICE.HOSTS.REVIEW.001"},
+        {"sshkey", "ADVICE.SSHKEY.REVIEW.001"},  {"ssh", "ADVICE.SSHKEY.REVIEW.001"},
+        {"cron", "ADVICE.CRON.REVIEW.001"},      {"at", "ADVICE.CRON.REVIEW.001"},
+        {"timer", "ADVICE.CRON.REVIEW.001"},     {"profile", "ADVICE.PROFILE.REVIEW.001"},
+        {"shell", "ADVICE.PROFILE.REVIEW.001"},  {"preload", "ADVICE.PRELOAD.REVIEW.001"},
+        {"webshell", "ADVICE.WEBSHELL.REVIEW.001"}, {"web", "ADVICE.WEBSHELL.REVIEW.001"},
+        {"process", "ADVICE.MINER.REVIEW.001"},  {"miner", "ADVICE.MINER.REVIEW.001"},
+        {"hash", "ADVICE.HASH.BASELINE.001"},    {"baseline", "ADVICE.HASH.BASELINE.001"},
+        {"log", "ADVICE.EVENTLOG.REVIEW.001"},   {"eventlog", "ADVICE.EVENTLOG.REVIEW.001"},
+    };
+    if (argc < 3) {
+        std::fprintf(stderr,
+            "用法: ctfir playbook <类型>\n"
+            "类型: user logonhide task service startup hosts sshkey cron profile preload "
+            "webshell process miner hash log\n");
+        return 3;
+    }
+    std::string t = to_lower(argv[2]);
+    for (const auto& [k, id] : map) {
+        if (t == k) {
+            const Advice* a = find_advice(id);
+            if (a) {
+                std::printf("【%s】(%s)\n%s\n", a->title, a->id, a->text);
+                return 0;
+            }
+        }
+    }
+    std::fprintf(stderr, "[ctfir] 未知手册类型: %s\n", t.c_str());
+    return 3;
+}
+
+// diff：两次扫描对比（处置前后复查）
+static int cmd_diff(int argc, char** argv) {
+    std::string a, b;
+    for (int i = 2; i < argc; ++i) {
+        if (!std::strcmp(argv[i], "--a") && i + 1 < argc) a = argv[++i];
+        else if (!std::strcmp(argv[i], "--b") && i + 1 < argc) b = argv[++i];
+    }
+    if (a.empty() || b.empty()) {
+        std::fprintf(stderr, "[ctfir] diff 需要 --a <会话目录> --b <会话目录>\n");
+        return 3;
+    }
+    std::string t, err;
+    std::vector<Finding> fa, fb;
+    if (!read_file_all(a + "/findings.json", t) || !findings_from_json(t, fa, err) ||
+        !read_file_all(b + "/findings.json", t) || !findings_from_json(t, fb, err)) {
+        std::fprintf(stderr, "[ctfir] findings 装载失败: %s\n", err.c_str());
+        return 3;
+    }
+    auto key = [](const Finding& f) { return f.rule_id + "@" + f.object_ref; };
+    std::set<std::string> ka, kb;
+    for (const auto& f : fa) ka.insert(key(f));
+    for (const auto& f : fb) kb.insert(key(f));
+    std::vector<std::string> resolved, added;
+    for (const auto& k : ka) if (!kb.count(k)) resolved.push_back(k);   // 在 A 不在 B：已处置/消失
+    for (const auto& k : kb) if (!ka.count(k)) added.push_back(k);      // 在 B 不在 A：新出现
+    std::printf("{\"resolved\":%zu,\"added\":%zu}\n", resolved.size(), added.size());
+    for (const auto& k : resolved) std::printf("[已消失] %s\n", k.c_str());
+    for (const auto& k : added) std::printf("[新出现] %s\n", k.c_str());
+    return resolved.empty() && added.empty() ? 0 : 1;
+}
+
 static int cmd_scan(const std::string& out_dir,
                     const std::vector<std::string>& extra_dirs = {},
-                    const std::string& baseline = "") {
+                    const std::string& baseline = "",
+                    const std::string& profile = "full") {
     ScanConfig cfg;
     cfg.out_dir = out_dir;
     cfg.extra_dirs = extra_dirs;
     cfg.baseline_path = baseline;
+    cfg.profile = profile;
     Session sess(cfg);
     sess.set_host_info(detect_os_name(), detect_os_version(), detect_os_arch(), detect_privilege());
 
@@ -117,6 +210,25 @@ static int cmd_scan(const std::string& out_dir,
                  sess.session().session_id.c_str(), out_dir.c_str());
 
     auto mods = build_platform_modules();
+    // profile 过滤：quick=核心模块 / web=仅 Web / full=全部
+    if (profile == "quick") {
+        static const char* keep[] = {"WIN.ACC", "WIN.LOGINHIDE", "WIN.SVC", "WIN.AUTORUN",
+                                     "WIN.HOSTS", "WIN.TASKS", "WIN.EVTLOG", "WIN.PROCCMD",
+                                     "LNX.ACC", "LNX.SSH", "LNX.CRON", "LNX.SHELL",
+                                     "LNX.PRELOAD", "LNX.HOSTS", "LNX.LOGINS"};
+        std::vector<Session::ModuleDef> km;
+        for (const auto& m : mods)
+            for (const char* k : keep)
+                if (m.id == k) { km.push_back(m); break; }
+        mods = km;
+    } else if (profile == "web") {
+        std::vector<Session::ModuleDef> wm;
+        for (const auto& m : mods)
+            if (m.id == "WIN.WEB" || m.id == "LNX.WEB") wm.push_back(m);
+        mods = wm;
+    }
+    sess.set_profile(profile);
+    std::fprintf(stderr, "[ctfir] profile=%s 模块=%zu\n", profile.c_str(), mods.size());
     sess.run(mods);
 
     if (!sess.write_outputs(reason)) {
@@ -238,12 +350,13 @@ int main(int argc, char** argv) {
         return 3;
     }
     if (cmd == "scan") {
-        std::string out_dir, baseline;
+        std::string out_dir, baseline, profile = "full";
         std::vector<std::string> extra_dirs;
         for (int i = 2; i < argc; ++i) {
             if (!std::strcmp(argv[i], "--out") && i + 1 < argc) out_dir = argv[++i];
             else if (!std::strcmp(argv[i], "--baseline") && i + 1 < argc) baseline = argv[++i];
             else if (!std::strcmp(argv[i], "--dir") && i + 1 < argc) extra_dirs.push_back(argv[++i]);
+            else if (!std::strcmp(argv[i], "--profile") && i + 1 < argc) profile = argv[++i];
         }
         if (out_dir.empty()) {
             std::fprintf(stderr, "[ctfir] scan 需要 --out <目录>\n");
@@ -252,8 +365,11 @@ int main(int argc, char** argv) {
         if (!baseline.empty() || !extra_dirs.empty())
             std::fprintf(stderr, "[ctfir] 巡检目录 %zu 个；基线: %s\n",
                          extra_dirs.size(), baseline.empty() ? "无" : baseline.c_str());
-        return cmd_scan(out_dir, extra_dirs, baseline);
+        return cmd_scan(out_dir, extra_dirs, baseline, profile);
     }
+    if (cmd == "help") return cmd_help();
+    if (cmd == "playbook") return cmd_playbook(argc, argv);
+    if (cmd == "diff") return cmd_diff(argc, argv);
     if (cmd == "explain") return cmd_explain(argc, argv);
     if (cmd == "report") return cmd_report(argc, argv);
     std::fprintf(stderr, "[ctfir] 未知命令: %s\n", cmd.c_str());

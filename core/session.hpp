@@ -19,6 +19,7 @@ struct ScanConfig {
     bool save_raw_evidence = true;
     std::vector<std::string> extra_dirs; // 用户附加巡检目录（--dir）
     std::string baseline_path;           // SHA256 基线清单（--baseline，"路径 sha256" 每行）
+    std::string profile = "full";        // quick / full / web
 };
 
 class Session;
@@ -86,6 +87,7 @@ public:
     const std::vector<Evidence>& evidence() const { return evidence_; }
     const std::vector<Finding>& findings() const { return findings_; }
     const ScanConfig& config() const { return cfg_; }
+    void set_profile(const std::string& p) { s_.profile = p; }
 
     // 产出目录文件：session.json / module-results.json / findings.json / advice.json /
     // events.jsonl / integrity.sha256 / evidence/*.raw

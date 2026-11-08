@@ -850,7 +850,7 @@ void mod_files(ModuleCtx& ctx) {
                 if (++files > 800) break;
                 std::string low = to_lower(fp);
                 std::string namelow = to_lower(fd.cFileName);
-                // 双扩展名（invoice.pdf.exe 类；排除合法归档 .tar.gz 等）
+                // 双扩展名（invoice.pdf.exe 类；排除合法归档与版本号 .3-1 等伪扩展）
                 if (namelow.find('.', 1) != std::string::npos) {
                     size_t last = namelow.rfind('.');
                     std::string lastext = namelow.substr(last);
@@ -860,7 +860,19 @@ void mod_files(ModuleCtx& ctx) {
                     bool prev_archive = prevext == ".zip" || prevext == ".rar" || prevext == ".7z" ||
                                         prevext == ".tar" || prevext == ".gz" || prevext == ".bz2" ||
                                         prevext == ".xz" || prevext == ".tgz";
-                    if (looks_exec_name(namelow) && !prev_archive && !prevext.empty()) {
+                    // 伪扩展校验：须为 [字母][字母数字]{1,4}，纯数字/含 - 的版本号不算
+                    bool prev_real_ext = prevext.size() >= 2 && prevext[0] == '.';
+                    if (prev_real_ext) {
+                        bool has_alpha = false;
+                        for (size_t k = 1; k < prevext.size(); ++k) {
+                            char c = prevext[k];
+                            if (c == '-' || c == '_') { prev_real_ext = false; break; }
+                            if (std::isalpha(static_cast<unsigned char>(c))) has_alpha = true;
+                            else if (!std::isalnum(static_cast<unsigned char>(c))) { prev_real_ext = false; break; }
+                        }
+                        if (!has_alpha) prev_real_ext = false;
+                    }
+                    if (looks_exec_name(namelow) && !prev_archive && prev_real_ext) {
                         ++double_ext;
                         Finding f;
                         f.rule_id = "WIN.FILES.DOUBLEEXT.001";
