@@ -21,6 +21,25 @@ namespace ctfir::win {
 
 namespace {
 
+// XML Data 字段提取（Name="X">value< ——只做子串定位，不引 XML 库，见 PLAN 边界声明）
+static std::string xml_data(const std::string& x, const char* name) {
+    std::string pat = std::string("Name=\"") + name + "\">";
+    size_t p = x.find(pat);
+    if (p == std::string::npos) return "";
+    size_t s = p + pat.size(), e = x.find('<', s);
+    return (e == std::string::npos) ? "" : x.substr(s, e - s);
+}
+
+// SystemTime 属性 → 规整为 YYYY-MM-DDTHH:MM:SSZ（去毫秒，供 beijing_time_str 解析）
+static std::string xml_time(const std::string& x) {
+    size_t p = x.find("SystemTime=\"");
+    if (p == std::string::npos) return "";
+    size_t s = p + 12, e = x.find('"', s);
+    std::string t = (e == std::string::npos) ? "" : x.substr(s, e - s);
+    if (t.size() >= 19) t = t.substr(0, 19) + "Z";
+    return t;
+}
+
 // ---- W03 计划任务（Task Scheduler 2.0 COM，递归含隐藏）----
 void mod_tasks(ModuleCtx& ctx) {
     HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -100,6 +119,14 @@ void mod_tasks(ModuleCtx& ctx) {
                         name = wide_to_utf8(bname);
                         SysFreeString(bname);
                     }
+                    // 状态（A7C9-W04 事实化：禁用任务要呈现"不会执行"）
+                    TASK_STATE tstate = TASK_STATE_UNKNOWN;
+                    task->get_State(&tstate);
+                    std::string state =
+                        tstate == TASK_STATE_DISABLED ? "Disabled" :
+                        tstate == TASK_STATE_QUEUED ? "Queued" :
+                        tstate == TASK_STATE_READY ? "Ready" :
+                        tstate == TASK_STATE_RUNNING ? "Running" : "Unknown";
                     VARIANT_BOOL hidden = VARIANT_FALSE;
                     ITaskDefinition* def = nullptr;
                     if (FAILED(task->get_Definition(&def)) || !def) { task->Release(); continue; }
@@ -109,6 +136,30 @@ void mod_tasks(ModuleCtx& ctx) {
                         settings->Release();
                     }
                     if (hidden == VARIANT_TRUE) ++hidden_cnt;
+                    // 首触发器时间
+                    std::string trig_txt;
+                    {
+                        ITriggerCollection* trigs = nullptr;
+                        if (SUCCEEDED(def->get_Triggers(&trigs)) && trigs) {
+                            LONG tn = 0;
+                            trigs->get_Count(&tn);
+                            for (LONG k = 1; k <= tn && k <= 5; ++k) {
+                                ITrigger* tg = nullptr;
+                                if (SUCCEEDED(trigs->get_Item(_variant_t(k), &tg)) && tg) {
+                                    BSTR bs = nullptr;
+                                    VARIANT_BOOL ten = VARIANT_TRUE;
+                                    tg->get_Enabled(&ten);
+                                    if (SUCCEEDED(tg->get_StartBoundary(&bs)) && bs) {
+                                        trig_txt += std::string(ten == VARIANT_TRUE ? "" : "[disabled]") +
+                                                    wide_to_utf8(bs) + " ";
+                                        SysFreeString(bs);
+                                    }
+                                    tg->Release();
+                                }
+                            }
+                            trigs->Release();
+                        }
+                    }
                     // 动作
                     IActionCollection* actions = nullptr;
                     std::string action_txt;
@@ -140,8 +191,25 @@ void mod_tasks(ModuleCtx& ctx) {
                         actions->Release();
                     }
                     std::string full = path_prefix + "\\" + name;
-                    listing += full + " | " + (hidden == VARIANT_TRUE ? "HIDDEN" : "visible") + " | " +
+                    listing += full + " | " + state + " | " +
+                               (hidden == VARIANT_TRUE ? "HIDDEN" : "visible") + " | " +
                                action_txt.substr(0, 160) + "\n";
+                    // 事实化（A7C9-W04）：非系统任务逐条呈现，禁用任务标注"不会执行"
+                    if (full.find("\\Microsoft\\") != 0) {
+                        Finding f;
+                        f.rule_id = "WIN.TASK.FACT.001";
+                        f.severity = "low";
+                        f.confidence = "high";
+                        f.rationale = "非系统计划任务: " + full +
+                                      "（状态 " + state +
+                                      (tstate == TASK_STATE_DISABLED ? "，禁用中不会执行" : "") +
+                                      "；触发器: " + (trig_txt.empty() ? "无/手动" : trig_txt.substr(0, 80)) +
+                                      "）——事实呈现，需按动作内容判断性质";
+                        f.object_ref = "Task" + full;
+                        f.limitations = {"备份/运维任务属正常；禁用≠无害"};
+                        f.advice_id = "ADVICE.TASK.REVIEW.001";
+                        ctx.add_finding(f);
+                    }
                     // 规则
                     bool net = contains_ci(action_txt, "powershell") || contains_ci(action_txt, "certutil") ||
                                contains_ci(action_txt, "http") || contains_ci(action_txt, "mshta") ||
@@ -298,11 +366,12 @@ void mod_procnet(ModuleCtx& ctx) {
     ctx.set_status(ModuleStatus::PASS);
 }
 
-// ---- W09 事件日志（4624/4625 Top 来源 IP）----
+// ---- W09 事件日志（4624/4625 登录 + 4720-4732 账户生命周期时间线）----
 void mod_evtlog(ModuleCtx& ctx) {
     // Security 通道需要管理员；受限令牌下 EvtQuery 失败 → PERMISSION_DENIED
     LPCWSTR channel = L"Security";
-    LPCWSTR query = L"*[System[(EventID=4624 or EventID=4625)]]";
+    LPCWSTR query = L"*[System[(EventID=4624 or EventID=4625 or EventID=4720 or EventID=4722 "
+                    L"or EventID=4724 or EventID=4725 or EventID=4726 or EventID=4732)]]";
     EVT_HANDLE q = EvtQuery(nullptr, channel, query, EvtQueryChannelPath | EvtQueryReverseDirection);
     if (!q) {
         DWORD err = GetLastError();
@@ -317,12 +386,14 @@ void mod_evtlog(ModuleCtx& ctx) {
     }
     std::map<std::string, int> fail_ip;
     int fail_total = 0, ok_total = 0, read = 0;
+    std::vector<std::string> created;      // 4720 新建账户（逐条 medium）
+    std::vector<std::string> mgmt_timeline; // 4722/4724/4725/4726/4732 聚合
     std::vector<EVT_HANDLE> events(100);
     DWORD returned = 0;
     while (read < 4000 && EvtNext(q, 100, events.data(), 2000, 0, &returned) && returned > 0) {
         for (DWORD i = 0; i < returned; ++i) {
             DWORD size_needed = 0, prop = 0;
-            EvtRender(q, events[i], EvtRenderEventXml, 0, nullptr, &size_needed, &prop);
+            EvtRender(nullptr, events[i], EvtRenderEventXml, 0, nullptr, &size_needed, &prop);
             if (size_needed == 0 || size_needed > 1024 * 1024) { EvtClose(events[i]); continue; }
             std::vector<wchar_t> xml(size_needed / 2 + 2);
             if (!EvtRender(nullptr, events[i], EvtRenderEventXml, size_needed, xml.data(), &size_needed, &prop)) {
@@ -331,22 +402,35 @@ void mod_evtlog(ModuleCtx& ctx) {
             }
             std::string x = wide_to_utf8(xml.data());
             ++read;
-            bool is_fail = x.find("<EventID>4625<") != std::string::npos;
-            if (is_fail) ++fail_total;
-            else ++ok_total;
-            // 提取 IpAddress Data（简单子串解析；不引 XML 库——按 PLAN 边界声明）
-            size_t ip_pos = x.find("\"IpAddress\"");
-            if (ip_pos == std::string::npos) ip_pos = x.find("IpAddress");
-            if (ip_pos != std::string::npos) {
-                size_t gt = x.find('>', ip_pos);
-                size_t lt = x.find('<', gt);
-                if (gt != std::string::npos && lt != std::string::npos && lt > gt) {
-                    std::string ip = x.substr(gt + 1, lt - gt - 1);
-                    if (!ip.empty() && ip != "-") {
-                        if (is_fail) ++fail_ip[ip];
-                        // 成功登录 IP 只统计 root 类账户（TargetUserName Administrateur/Administrator 由人工看证据）
-                    }
-                }
+            int eid = 0;
+            {
+                size_t p1 = x.find("<EventID>");
+                if (p1 != std::string::npos) eid = std::atoi(x.c_str() + p1 + 9);
+            }
+            std::string t = xml_time(x);
+            std::string tb = t.empty() ? "" : beijing_time_str(t);
+            std::string target = xml_data(x, "TargetUserName");
+            std::string ip = xml_data(x, "IpAddress");
+            std::string member = xml_data(x, "MemberName");
+            std::string group = xml_data(x, "TargetUserName");
+
+            if (eid == 4625) {
+                ++fail_total;
+                if (!ip.empty() && ip != "-") ++fail_ip[ip];
+            } else if (eid == 4624) {
+                ++ok_total;
+            } else if (eid == 4720) {
+                created.push_back(tb + " 创建账户 " + target);
+            } else if (eid == 4722) {
+                mgmt_timeline.push_back(tb + " 启用账户 " + target);
+            } else if (eid == 4724) {
+                mgmt_timeline.push_back(tb + " 重置密码 " + target);
+            } else if (eid == 4725) {
+                mgmt_timeline.push_back(tb + " 禁用账户 " + target);
+            } else if (eid == 4726) {
+                mgmt_timeline.push_back(tb + " 删除账户 " + target);
+            } else if (eid == 4732) {
+                mgmt_timeline.push_back(tb + " 加入组 " + (member.empty() ? "?" : member) + " → " + group);
             }
             EvtClose(events[i]);
         }
@@ -357,11 +441,37 @@ void mod_evtlog(ModuleCtx& ctx) {
     for (const auto& [ip, cnt] : fail_ip) top += ip + "×" + std::to_string(cnt) + " ";
     Evidence e;
     e.source_kind = "eventlog";
-    e.source_path = "Security(4624/4625)";
+    e.source_path = "Security(4624/4625/4720-4732)";
     e.payload = "read=" + std::to_string(read) + " fail(4625)=" + std::to_string(fail_total) +
-                " ok(4624)=" + std::to_string(ok_total) + "\ntop_fail_ip: " + top;
+                " ok(4624)=" + std::to_string(ok_total) +
+                " account_created(4720)=" + std::to_string(created.size()) +
+                "\ntop_fail_ip: " + top +
+                (mgmt_timeline.empty() ? "" : "\n--- 账户管理事件 ---\n" + join(mgmt_timeline, "\n"));
     ctx.add_evidence(e);
     ctx.checked_source("Security 通道");
+    // 4720 逐条：CTF 直答"后门账户何时创建"
+    for (const auto& c : created) {
+        Finding f;
+        f.rule_id = "WIN.EVT.ACC.CREATE.001";
+        f.severity = "medium";
+        f.confidence = "high";
+        f.rationale = "安全日志记录到新建本地账户: " + c + "（北京时间）——结合授权运维记录核实";
+        f.object_ref = "Security 4720";
+        f.limitations = {"日志可能被清除（1102 事件）；时间取自事件本地记录"};
+        f.advice_id = "ADVICE.ACC.REVIEW.001";
+        ctx.add_finding(f);
+    }
+    if (!mgmt_timeline.empty()) {
+        Finding f;
+        f.rule_id = "WIN.EVT.ACC.TIMELINE.001";
+        f.severity = "low";
+        f.confidence = "high";
+        f.rationale = "账户管理事件时间线（启用/重置/禁用/删除/入组，共 " +
+                      std::to_string(mgmt_timeline.size()) + " 条）——详见证据；加入管理员组(4732)重点关注";
+        f.object_ref = "Security 4722-4732";
+        f.advice_id = "ADVICE.EVENTLOG.REVIEW.001";
+        ctx.add_finding(f);
+    }
     if (fail_total >= 20) {
         Finding f;
         f.rule_id = "WIN.EVT.AUTHFAIL.001";

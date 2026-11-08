@@ -65,6 +65,38 @@ void mod_acc(ModuleCtx& ctx) {
                 ctx.add_finding(f);
             }
         }
+        // 账户事实化（A7C9-W01）：全量清单 + 非内置账户逐个呈现
+        {
+            std::string inv;
+            for (DWORD i = 0; i < read; ++i) {
+                USER_INFO_3& u = buf[i];
+                inv += wide_to_utf8(u.usri3_name) + "(RID" + std::to_string(u.usri3_user_id) +
+                       (u.usri3_flags & UF_ACCOUNTDISABLE ? ",禁用" : ",活动") + ") ";
+            }
+            Finding fsum;
+            fsum.rule_id = "WIN.ACC.INVENTORY.001";
+            fsum.severity = "info";
+            fsum.confidence = "high";
+            fsum.rationale = "本地账户清单（事实呈现）: " + inv + "——不构成恶意判定，供与隐藏键/管理员组交叉核实";
+            fsum.object_ref = "NetUserEnum";
+            fsum.advice_id = "ADVICE.ACC.REVIEW.001";
+            ctx.add_finding(fsum);
+            for (DWORD i = 0; i < read; ++i) {
+                USER_INFO_3& u = buf[i];
+                if (u.usri3_user_id <= 1000) continue; // 内置段(500 Administrator/501 Guest 等)
+                Finding f;
+                f.rule_id = "WIN.ACC.CUSTOM.001";
+                f.severity = "low";
+                f.confidence = "high";
+                f.rationale = "非内置本地账户: " + wide_to_utf8(u.usri3_name) +
+                              " (RID " + std::to_string(u.usri3_user_id) +
+                              (u.usri3_flags & UF_ACCOUNTDISABLE ? "，已禁用" : "，活动") +
+                              ")——授权运维/自建服务账户常见，需核实创建来源";
+                f.object_ref = "NetUserEnum:" + wide_to_utf8(u.usri3_name);
+                f.advice_id = "ADVICE.ACC.REVIEW.001";
+                ctx.add_finding(f);
+            }
+        }
         NetApiBufferFree(buf);
     } else {
         ctx.omitted_source("NetUserEnum", last_error_str("NetUserEnum"));
