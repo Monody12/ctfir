@@ -1,6 +1,9 @@
 # STATUS
 
-- 阶段：**批量执行中——**批量执行完成（WP0-WP8）——待用户验收；剩余：360 重启回归/Server2008R2/CentOS3.10 真机格****（[BATCH-PLAN-M1M5.md](BATCH-PLAN-M1M5.md)）
+- 阶段：**批量执行中——**v0.3 批量完成（自评循环 R2 收工）——三测台全绿，待用户验收**
+- 门禁：单测 22/22 ×2 平台 | centos-ir-lab 15/15 | A7C9 8/8 | Linux 夹具 24/24 | 未解释误报 0
+- 发布：D:\ctfir-buildelease\ctfir-v0.3-{windows-x64,linux-x86_64}.zip（hash 见 TEST_RESULTS #22）
+- 待用户：360 重启回归 / Server2008R2·CentOS3.10 真机格 / A7C9 Cleanup 决定**（[BATCH-PLAN-M1M5.md](BATCH-PLAN-M1M5.md)）
 - 最后更新：2026-11-08 深夜（北京时间）
 
 ## 已完成

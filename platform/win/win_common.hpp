@@ -179,14 +179,17 @@ inline std::vector<std::string> extract_paths(const std::string& cmdline_utf8) {
     while (i < n) {
         char c = s[i];
         if (c == '"') {
-            // 引号段：整段当候选路径（可能含参数，再细分）
+            // 引号段：整段即路径（空格保留）；非路径形态再递归细分
             size_t j = i + 1;
             std::string seg;
             while (j < n && s[j] != '"') { seg += s[j]; ++j; }
-            // 引号段内再扫 X:\ 起点
-            for (const auto& p : extract_paths(seg)) out.push_back(p);
-            if (!seg.empty() && seg.find(':') == std::string::npos && seg.find('\\') != std::string::npos)
-                out.push_back(seg); // 相对形式如 \dir\x
+            if (seg.size() >= 3 && seg[1] == ':' && (seg[2] == '\\' || seg[2] == '/')) {
+                out.push_back(seg); // "C:\Program Files\App\a.exe" 整段
+            } else {
+                for (const auto& p : extract_paths(seg)) out.push_back(p); // 嵌套引号（A7C9-W03）
+                if (!seg.empty() && seg.find(':') == std::string::npos && seg.find('\\') != std::string::npos)
+                    out.push_back(seg); // 相对形式如 \dir\x
+            }
             i = (j < n) ? j + 1 : n;
             continue;
         }

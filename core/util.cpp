@@ -98,6 +98,8 @@ std::vector<std::string> split_lines(const std::string& s) {
             start = i + 1;
         }
     }
+    // 以换行结尾的输入不产生尾空行
+    if (!out.empty() && !s.empty() && s.back() == '\n' && out.back().empty()) out.pop_back();
     return out;
 }
 

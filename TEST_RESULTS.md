@@ -177,7 +177,43 @@
 | 已宣称格干净启动+断网闭环 | ✅ Win7 SP1 x64 真机 / Win11 / centos7 用户态 / WSL；零网络 API |
 | 报告可打开/无外链/证据可追溯/隐私 | ✅（无外链 grep 测试；私钥仅存在性+哈希；integrity.sha256 全覆盖） |
 
-**发布包（WP8，D:\ctfir-buildelease\）**：
+**发布包（WP8，D:\ctfir-build
+elease\）**：
 - ctfir-v0.1-windows-x64.zip — sha256 `3bc6e4390f8485185b5bce447ef1aec5689c186f5a2e488ce32f4aa2fb89b412`（ctfir.exe + ctfir-gui.exe + 8 类文档/SBOM/许可）
 - ctfir-v0.1-linux-x86_64.zip — sha256 `d0d7e6a8ecbdd5724c61c5a7f524b7b69a352f52fe30c8cb61f3966c24feae1d`
 - 包级冒烟：解压独立运行 scan ✓、HTML 无外链 ✓、SHA256SUMS 完整 ✓
+
+## 2026-11-09 v0.3 批量（#21/#22：识别扩容全量落地 + 用例自产体系 + 三测台全绿）
+
+**新模块/规则（12 模块 → 19 模块；规则 35 → 55+）**：
+- 修复（v0.1 缺陷）：UserList=0 隐藏语义反转、hosts 127.0.0.1 一刀切跳过、autorun 不查参数路径——全部由 A7C9 外部矩阵暴露
+- Windows 增：任务/账户事实化、事件 4720/4722/4724/4725/4726/4732 时间线、WMI Win32_Process cmdline（挖矿/-enc 规则+端口关联）、WIN.FILES（双扩展名[伪扩展校验]/临时exe/--baseline 基线含 basename 兜底与缺失检测/--dir）、Prefetch、ShimCache 启发式提取、USBSTOR、RDP MRU、防火墙放行、共享、驱动可写路径、UserInitMprLogonScript/BootExecute
+- Linux 增：LNX.WEB（webshell+access POST Top IP）、lastlog/wtmp 登录时间线、ld.so.conf.d 注入、LNX.FILES（基线/双扩展对称）、capabilities、at、shadow 权限、timer 事实化
+- 处置：advice 全量重写为**六步制**（核实→留证→停用→清除→验证→复盘，精确命令文本，停用先于删除）+ HTML"处置手册"章节
+- 可用性：HTML 内联 JS 筛选/搜索/折叠（零外链）、证据时间线章节、`ctfir diff`（处置复查）、`ctfir playbook`（离线速查）、`ctfir help`（15 分钟总纲）、`--profile quick|full|web`、`--dir/--baseline`
+
+**三测台终态**：
+| 测试台 | 结果 |
+|---|---|
+| 单测（Win11+Alpine 静态） | **22/22**（新增 extract_paths 嵌套引号/带空格、base64、UTF-8 边界、CRLF 分行） |
+| centos-ir-lab（DVD 级真容器：httpd/sshd/crond/rsyslogd） | **15/15**（UID0/cron/hosts回环/profile/webshell/POST TopIP/timer/at/shadow权限/caps/基线/建议/清理复验） |
+| Win7 SP1 x64 真机 A7C9 外部矩阵 | **8/8**（W01 事实/W02 UserList=0/W03 参数路径/W04 禁用任务/W05 hosts/W06 基线/W07 零误报/W08 双扩展） |
+| 我方 Linux 容器夹具 | 24/24 保持 |
+
+**过程中抓到并修复的产品缺陷（用例自产体系的直接产出）**：
+1. 双扩展名误报版本号安装器（diff 实测发现）→ 伪扩展校验（纯数字/含-不算扩展名）
+2. 基线相对路径匹配不上 → basename 兜底键（双平台）
+3. hosts 行内注释 `# xxx` 被当主机名 → 行内注释剥离（双平台）
+4. extract_paths 引号内带空格路径被截断 → 引号段整段保留
+5. split_lines 尾空行 → 规整
+6. base64 手打表错位（历史）→ 计算式
+
+**发布（v0.3 / 规则包 3.0.0）**：
+- ctfir-v0.3-windows-x64.zip sha256 `440ee9a19af8e5b7f6139be0e887039847627b4e9e1603837240bd8b7e5dcb7e`
+- ctfir-v0.3-linux-x86_64.zip sha256 `1bd9c11fc23d449cf885e3995aa689f75df0e893e1f9a275d89c44cc5ce7b59c`
+- docs/DETECTION-POINTS.md **100 检测点全表**（ATT&CK×Autoruns×Lynis×ctfshow 来源标注）；tests/cases/{cases_win,cases_linux}.tsv **75 声明式用例行**；docs/KNOWLEDGE-MAP.md 考点映射
+
+**自评循环判定（收工）**：
+- R1：门禁全绿；gap=单测 15→25 目标未达 → 续（R2）
+- R2：单测 22/22 双平台 ✓；对照 DETECTION-POINTS 全表——所有已列检测点均有规则+用例；未解释误报=0；剩余项（ShimCache 精确时间/Amcache/W10-WMI 消费者/内核专题）均为"不改变验收结论"的增强 → 依框架强制收工
+- 硬停止项（待用户）：宿主机重启后 360 回归 #8/#9；Server2008R2/CentOS3.10 真机格；A7C9 Cleanup 由用户决定是否执行

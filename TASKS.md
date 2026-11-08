@@ -43,5 +43,7 @@
 | 2026-11-09 | hosts: 10.66.0.66 ctfir-marker.local | W06 正例 | hosts.bak 恢复 |
 | 2026-11-09 | ctfir-gui-show 交互任务(WP5验收) | GUI 显示 | 已删除 |
 | 2026-11-09 | RDP 临时开启(fDenyTSConnections+防火墙) | 视觉验收通道 | 已回滚(=1+规则禁用) |
+| 2026-11-09 | centos-ir-lab 容器内 ctfir-marker 全套(UID0/cron/hosts/webshell/shadow/caps/timer/at/基线) | LNX 新规则正例 | 已清理复验(15/15) |
+| 2026-11-09 | A7C9 夹具(外部AI部署, 仅只读断言未动) | 八项对接 | 保留待用户 Cleanup 决定 |
 
 备注：M0 在 Win7 VM 仅建立 `C:\ctfir-test\` 部署目录并运行只读 PoC（未建夹具）。
