@@ -14,6 +14,7 @@ if(WIN32)
     ../platform/win/modules.cpp
     ../platform/win/mod_w.cpp
     ../platform/win/mod_w2.cpp
+    ../platform/win/mod_w3.cpp
   )
 else()
   target_sources(ctfir_core PRIVATE

@@ -372,6 +372,41 @@ void mod_autorun(ModuleCtx& ctx) {
                  "\nAppInit_DLLs=" + appinit + "\nAppInit_DLLs(32)=" + appinit32;
     ctx.add_evidence(we);
     ctx.checked_source("Winlogon Shell/Userinit");
+    // 登录脚本持久化点（T1037）与 Boot Execute
+    {
+        std::string logonscript, bootexec;
+        reg_get(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon",
+                L"UserInitMprLogonScript", false, logonscript);
+        reg_get(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Control\\Session Manager",
+                L"BootExecute", false, bootexec);
+        Evidence le;
+        le.source_kind = "registry";
+        le.source_path = "Winlogon\\UserInitMprLogonScript + SessionManager\\BootExecute";
+        le.payload = "UserInitMprLogonScript=" + logonscript + "\nBootExecute=" + bootexec;
+        ctx.add_evidence(le);
+        ctx.checked_source("UserInitMprLogonScript/BootExecute");
+        if (!logonscript.empty()) {
+            Finding f;
+            f.rule_id = "WIN.AUTORUN.LOGONSCRIPT.001";
+            f.severity = "high";
+            f.confidence = "medium";
+            f.rationale = "Winlogon UserInitMprLogonScript 登录脚本持久化: " + logonscript.substr(0, 200);
+            f.object_ref = "Winlogon\\UserInitMprLogonScript";
+            f.advice_id = "ADVICE.AUTORUN.REVIEW.001";
+            ctx.add_finding(f);
+        }
+        std::string b = to_lower(bootexec);
+        if (!b.empty() && b.find("autocheck") == std::string::npos) {
+            Finding f;
+            f.rule_id = "WIN.AUTORUN.BOOTEXECUTE.001";
+            f.severity = "high";
+            f.confidence = "medium";
+            f.rationale = "BootExecute 非默认值（默认 autocheck autochk *）: " + bootexec.substr(0, 200);
+            f.object_ref = "SessionManager\\BootExecute";
+            f.advice_id = "ADVICE.AUTORUN.REVIEW.001";
+            ctx.add_finding(f);
+        }
+    }
     ctx.checked_source("AppInit_DLLs(双视图)");
     for (const std::string* p : {&shell, &userinit}) {
         if (p->empty()) continue;
