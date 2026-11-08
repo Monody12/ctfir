@@ -158,3 +158,26 @@
 
 **误报回归（PLAN §14.5）**：CentOS 默认 /etc/hosts 的 ip6-localnet 等本地条目命中 LNX.HOSTS.MAP.001（未解释 FP）→ 规则修复（排除 ip6-*/localhost* 前缀），双平台同步；复测 Linux 夹具 24/24、Windows 15/15、CentOS 容器 0 误报。教训：新规则必须在目标发行版默认环境跑负例。
 **Linux 产物**：ctfir `881ce45016de51168a77223cd933875673346f49d5333cf9c9c8eb65e08e759b`
+
+## 2026-11-09 WP7/WP8（#20：断网验证 + 权限对照 + 硬门禁自查 + 发布包）
+
+**断网验证**：代码级审计（grep core/platform/apps）——**零** socket()/connect()/WSAStartup/WinHttp/URLDownload/system()/popen() 调用；链接 ws2_32 仅用于 ntohs 字节序。运行时 netstat 抽查因进程存活期过短未捕获（如实记录），以代码审计为准。
+
+**权限对照（Windows）**：runas /trustlevel:0x20000 → WIN.EVTLOG = **PERMISSION_DENIED**、会话 PARTIAL ✓（"权限失败不 PASS" 真机验证）；已知偏差：SAFER 令牌下 TokenElevation 仍显示 admin（KNOWN_LIMITATIONS #11）。Linux 侧 nobody fault 此前 24/24 已验。
+
+**§14.5 MVP 硬门禁自查**：
+| 门禁 | 结论 |
+|---|---|
+| 未扫/权限/超时/解析失败不输出 PASS | ✅（引擎单测 + nobody fault + EVTLOG 非提权 + 超时兜底） |
+| 每条已发布规则有最低样本 | ✅ Linux 夹具 24/24（正9/负7/fault4/清理复验）+ Win7 夹具 6/6 |
+| 无未解释高风险 FP | ✅ ip6-localhost/usernetctl 两起已修复并回归；余下均为低风险且已解释（容器 hosts 工件） |
+| 无冻结样本 FN | ✅（正例全命中） |
+| 目标配置无未授权修改 | ✅ 夹具全清理登记（TASKS.md）；工具本体只读 |
+| 无可执行自动修复路径 | ✅ 代码审计无 system/popen/写配置；CLI 显式拒绝 fix |
+| 已宣称格干净启动+断网闭环 | ✅ Win7 SP1 x64 真机 / Win11 / centos7 用户态 / WSL；零网络 API |
+| 报告可打开/无外链/证据可追溯/隐私 | ✅（无外链 grep 测试；私钥仅存在性+哈希；integrity.sha256 全覆盖） |
+
+**发布包（WP8，D:\ctfir-buildelease\）**：
+- ctfir-v0.1-windows-x64.zip — sha256 `3bc6e4390f8485185b5bce447ef1aec5689c186f5a2e488ce32f4aa2fb89b412`（ctfir.exe + ctfir-gui.exe + 8 类文档/SBOM/许可）
+- ctfir-v0.1-linux-x86_64.zip — sha256 `d0d7e6a8ecbdd5724c61c5a7f524b7b69a352f52fe30c8cb61f3966c24feae1d`
+- 包级冒烟：解压独立运行 scan ✓、HTML 无外链 ✓、SHA256SUMS 完整 ✓

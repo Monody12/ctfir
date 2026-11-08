@@ -3,6 +3,12 @@
 状态：NOT_TESTED / BUILT_NOT_RUN / PASSED / FAILED / DEFERRED / NOT_IMPLEMENTED
 规则：未测格不写 PASSED；无基线不下完整性结论；每格有证据指针（TEST_RESULTS.md #编号）。
 
+## M0—M8 终态矩阵（2026-11-09，详见 TEST_RESULTS #10-#20）
+
+- **模块实现：Windows 10/10（A6+B4 含 W13）；Linux 12/12（A7+B5 含 L13）；规则 35 条全部有样本**
+- 非功能：JSONL 事件流 / 取消保 partial / 超时预算 / 原子写 / integrity.sha256 / explain+report 离线链 / GUI 复制建议
+- C 级 DEFERRED：W10 WMI、W11 深SAM、W12 策略、L12 网络策略（发布说明如实标注）
+
 ## M0 兼容矩阵（2026-11-08）
 
 | 平台格 | 优先 | 构建 | 启动 | 证据 |

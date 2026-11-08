@@ -201,8 +201,10 @@ void mod_suid(ModuleCtx& ctx) {
         "newgrp", "gpasswd", "pkexec", "crontab", "at", "ssh-keysign",
         "fusermount", "fusermount3", "mount.nfs", "staprun", "mtr-packet",
         "unix_chkpwd", "userhelper", "pam_timestamp_check", "chage", "expiry",
-        "wall", "write", "traceroute6.iputils", "ksu", "Xorg.wrap"};
+        "wall", "write", "traceroute6.iputils", "ksu", "Xorg.wrap", "usernetctl",
+        "userisdnctl", "pppd", "Xorg", "v4l2ucp"};
     std::set<std::string> allow(known, known + sizeof(known) / sizeof(known[0]));
+    std::set<std::pair<unsigned long, unsigned long>> seen_inode;  // (dev,ino) 去重（/sbin 符号链接双列）
     size_t entries = 0;
     for (const char* d : dirs) {
         for (const auto& p : list_dir(d, 5000)) {
@@ -210,6 +212,9 @@ void mod_suid(ModuleCtx& ctx) {
             struct stat st{};
             if (lstat(p.c_str(), &st) != 0) continue;   // 不跟随符号链接
             if (!S_ISREG(st.st_mode)) continue;
+            if (!seen_inode.insert({static_cast<unsigned long>(st.st_dev),
+                                    static_cast<unsigned long>(st.st_ino)}).second)
+                continue;
             bool suid = (st.st_mode & S_ISUID) != 0;
             bool sgid = (st.st_mode & S_ISGID) != 0;
             if (!suid && !sgid) continue;

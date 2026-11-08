@@ -1,6 +1,6 @@
 # STATUS
 
-- 阶段：**批量执行中——WP6 完成，WP7/WP8 收尾中**（[BATCH-PLAN-M1M5.md](BATCH-PLAN-M1M5.md)）
+- 阶段：**批量执行中——**批量执行完成（WP0-WP8）——待用户验收；剩余：360 重启回归/Server2008R2/CentOS3.10 真机格****（[BATCH-PLAN-M1M5.md](BATCH-PLAN-M1M5.md)）
 - 最后更新：2026-11-08 深夜（北京时间）
 
 ## 已完成
