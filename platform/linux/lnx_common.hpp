@@ -5,8 +5,10 @@
 #include "core/util.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <dirent.h>
 #include <fstream>
+#include <map>
 #include <set>
 #include <sstream>
 #include <sys/stat.h>

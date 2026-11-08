@@ -557,7 +557,10 @@ void mod_hosts(ModuleCtx& ctx) {
         return;
     }
     int zero_sink = 0;  // 0.0.0.0 沉坑计数（屏蔽列表惯例；聚合避免刷屏）
-    for_each_line(r.content, [&](int no, const std::string& line) {
+    for_each_line(r.content, [&](int no, const std::string& line0) {
+        std::string line = line0;
+        size_t hash = line.find('#');            // 行内注释剥离（A7C9-W05 变体）
+        if (hash != std::string::npos) line = line.substr(0, hash);
         std::string t = trim(line);
         if (t.empty() || t[0] == '#') return;
         std::istringstream is(t);

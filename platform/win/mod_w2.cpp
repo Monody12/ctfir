@@ -819,7 +819,13 @@ void mod_files(ModuleCtx& ctx) {
                     }
                     if (path.empty()) path = tok;
                 }
-                if (!path.empty() && sha.size() == 64) baseline[to_lower(path)] = sha;
+                if (!path.empty() && sha.size() == 64) {
+                    std::string lp = to_lower(path);
+                    baseline[lp] = sha;
+                    // 相对路径兜底：再登记 basename 键
+                    size_t bs = lp.find_last_of("\\/");
+                    if (bs != std::string::npos) baseline[lp.substr(bs + 1)] = sha;
+                }
             });
             ctx.checked_source("基线清单 " + std::to_string(baseline.size()) + " 条");
         } else {
@@ -900,6 +906,10 @@ void mod_files(ModuleCtx& ctx) {
                 // 基线比对（W06）
                 if (!baseline.empty()) {
                     auto it = baseline.find(low);
+                    if (it == baseline.end()) {
+                        std::string bn = low.substr(low.find_last_of("\\/") + 1);
+                        it = baseline.find(bn);
+                    }
                     if (it != baseline.end()) {
                         baseline_seen.insert(low);
                         ReadResult r = read_text_file(fp, 8 * 1024 * 1024);
