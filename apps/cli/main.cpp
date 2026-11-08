@@ -98,9 +98,13 @@ static int cmd_doctor() {
     return 0;
 }
 
-static int cmd_scan(const std::string& out_dir) {
+static int cmd_scan(const std::string& out_dir,
+                    const std::vector<std::string>& extra_dirs = {},
+                    const std::string& baseline = "") {
     ScanConfig cfg;
     cfg.out_dir = out_dir;
+    cfg.extra_dirs = extra_dirs;
+    cfg.baseline_path = baseline;
     Session sess(cfg);
     sess.set_host_info(detect_os_name(), detect_os_version(), detect_os_arch(), detect_privilege());
 
@@ -234,15 +238,21 @@ int main(int argc, char** argv) {
         return 3;
     }
     if (cmd == "scan") {
-        std::string out_dir;
+        std::string out_dir, baseline;
+        std::vector<std::string> extra_dirs;
         for (int i = 2; i < argc; ++i) {
             if (!std::strcmp(argv[i], "--out") && i + 1 < argc) out_dir = argv[++i];
+            else if (!std::strcmp(argv[i], "--baseline") && i + 1 < argc) baseline = argv[++i];
+            else if (!std::strcmp(argv[i], "--dir") && i + 1 < argc) extra_dirs.push_back(argv[++i]);
         }
         if (out_dir.empty()) {
             std::fprintf(stderr, "[ctfir] scan 需要 --out <目录>\n");
             return 3;
         }
-        return cmd_scan(out_dir);
+        if (!baseline.empty() || !extra_dirs.empty())
+            std::fprintf(stderr, "[ctfir] 巡检目录 %zu 个；基线: %s\n",
+                         extra_dirs.size(), baseline.empty() ? "无" : baseline.c_str());
+        return cmd_scan(out_dir, extra_dirs, baseline);
     }
     if (cmd == "explain") return cmd_explain(argc, argv);
     if (cmd == "report") return cmd_report(argc, argv);

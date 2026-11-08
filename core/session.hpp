@@ -17,6 +17,8 @@ struct ScanConfig {
     std::string out_dir;                 // 必须已存在可写（run 前校验）
     long long module_budget_ms = 30000;  // 每模块默认预算
     bool save_raw_evidence = true;
+    std::vector<std::string> extra_dirs; // 用户附加巡检目录（--dir）
+    std::string baseline_path;           // SHA256 基线清单（--baseline，"路径 sha256" 每行）
 };
 
 class Session;

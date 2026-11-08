@@ -21,6 +21,7 @@ else()
     ../platform/linux/modules.cpp
     ../platform/linux/mod_a.cpp
     ../platform/linux/mod_b.cpp
+    ../platform/linux/mod_c.cpp
   )
 endif()
 if(MSVC)

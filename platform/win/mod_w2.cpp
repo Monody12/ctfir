@@ -6,8 +6,10 @@
 #include <tlhelp32.h>
 #include <iphlpapi.h>
 #include <winevt.h>
+#include <wbemidl.h>
 #include <comdef.h>
 #include <map>
+#include <set>
 
 #pragma comment(lib, "taskschd.lib")
 #pragma comment(lib, "iphlpapi.lib")
@@ -16,6 +18,7 @@
 #pragma comment(lib, "oleaut32.lib")
 #pragma comment(lib, "comsuppw.lib")
 #pragma comment(lib, "wevtapi.lib")
+#pragma comment(lib, "wbemuuid.lib")
 
 namespace ctfir::win {
 
@@ -661,11 +664,288 @@ void mod_web(ModuleCtx& ctx) {
 
 } // namespace
 
+// ---- WIN.PROCCMD：WMI 进程命令行（cmdline 规则落地 + 端口关联）----
+void mod_proccmd(ModuleCtx& ctx) {
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    if (FAILED(hr) && hr != RPC_E_CHANGED_MODE) {
+        ctx.omitted_source("WMI", "CoInitializeEx 失败");
+        ctx.set_status(ModuleStatus::ERROR);
+        return;
+    }
+    // 进程级一次；若已被设置会报 TOO_LATE——忽略继续（默认安全级可用）
+    CoInitializeSecurity(nullptr, -1, nullptr, nullptr, RPC_C_AUTHN_LEVEL_DEFAULT,
+                         RPC_C_IMP_LEVEL_IMPERSONATE, nullptr, EOAC_NONE, nullptr);
+    IWbemLocator* loc = nullptr;
+    if (FAILED(CoCreateInstance(CLSID_WbemLocator, nullptr, CLSCTX_INPROC_SERVER,
+                                IID_IWbemLocator, (void**)&loc)) || !loc) {
+        ctx.omitted_source("WMI 定位器", "CoCreateInstance 失败");
+        ctx.set_status(ModuleStatus::UNSUPPORTED);
+        return;
+    }
+    IWbemServices* svc = nullptr;
+    if (FAILED(loc->ConnectServer(_bstr_t(L"ROOT\\CIMV2"), nullptr, nullptr, nullptr,
+                                  0, nullptr, nullptr, &svc)) || !svc) {
+        ctx.omitted_source("WMI ConnectServer", "失败（服务未运行?）");
+        loc->Release();
+        ctx.set_status(ModuleStatus::ERROR);
+        return;
+    }
+    CoSetProxyBlanket(svc, RPC_C_AUTHN_WINNT, RPC_C_AUTHN_NONE, nullptr,
+                      RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE, nullptr, EOAC_NONE);
+    IEnumWbemClassObject* en = nullptr;
+    if (FAILED(svc->ExecQuery(_bstr_t(L"WQL"),
+                              _bstr_t(L"SELECT ProcessId, Name, CommandLine FROM Win32_Process"),
+                              WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
+                              nullptr, &en)) || !en) {
+        ctx.omitted_source("WMI ExecQuery", "失败");
+        svc->Release(); loc->Release();
+        ctx.set_status(ModuleStatus::ERROR);
+        return;
+    }
+    std::map<DWORD, std::string> cmd_by_pid;
+    std::string listing;
+    int cnt = 0;
+    for (;;) {
+        IWbemClassObject* obj = nullptr;
+        ULONG got = 0;
+        if (en->Next(WBEM_INFINITE, 1, &obj, &got) != WBEM_S_NO_ERROR || got == 0) break;
+        VARIANT vp, vn, vc;
+        VariantInit(&vp); VariantInit(&vn); VariantInit(&vc);
+        bool ok_pid = SUCCEEDED(obj->Get(L"ProcessId", 0, &vp, nullptr, nullptr)) && vp.vt == VT_I4;
+        bool ok_name = SUCCEEDED(obj->Get(L"Name", 0, &vn, nullptr, nullptr)) && vn.vt == VT_BSTR;
+        bool ok_cmd = SUCCEEDED(obj->Get(L"CommandLine", 0, &vc, nullptr, nullptr)) && vc.vt == VT_BSTR;
+        if (ok_pid) {
+            DWORD pid = static_cast<DWORD>(vp.lVal);
+            std::string name = ok_name ? wide_to_utf8(vn.bstrVal) : "";
+            std::string cl = ok_cmd ? wide_to_utf8(vc.bstrVal) : "";
+            if (!cl.empty()) {
+                ++cnt;
+                cmd_by_pid[pid] = cl;
+                listing += std::to_string(pid) + "|" + name + "|" + cl.substr(0, 200) + "\n";
+                bool miner = contains_ci(cl, "stratum") || contains_ci(cl, "xmrig") ||
+                             contains_ci(cl, "kdevtmpfsi") || contains_ci(cl, "kinsing");
+                bool stealth = contains_ci(cl, "-enc ") || contains_ci(cl, "-w hidden") ||
+                               contains_ci(cl, "-nop -w") || contains_ci(cl, "frombase64string") ||
+                               (contains_ci(cl, "certutil") && contains_ci(cl, "urlcache")) ||
+                               contains_ci(cl, "bitsadmin /transfer");
+                if (miner || stealth) {
+                    Finding f;
+                    f.rule_id = "WIN.PROC.CMDLINE.001";
+                    f.severity = "high";
+                    f.confidence = "medium";
+                    f.rationale = std::string("进程命令行") + (miner ? "含矿池/矿机特征" : "含隐藏执行/下载特征") +
+                                  ": PID " + std::to_string(pid) + " " + cl.substr(0, 220);
+                    f.object_ref = "PID " + std::to_string(pid);
+                    f.advice_id = "ADVICE.MINER.REVIEW.001";
+                    ctx.add_finding(f);
+                }
+            }
+        }
+        VariantClear(&vp); VariantClear(&vn); VariantClear(&vc);
+        obj->Release();
+        if (ctx.expired()) { ctx.note("预算截断"); break; }
+    }
+    en->Release(); svc->Release(); loc->Release();
+    // 端口关联（TCP owner 表复用）
+    DWORD sz = 0;
+    GetExtendedTcpTable(nullptr, &sz, FALSE, AF_INET, TCP_TABLE_OWNER_MODULE_ALL, 0);
+    std::vector<BYTE> tb(sz ? sz : 1);
+    std::map<DWORD, std::string> ports_by_pid;
+    if (GetExtendedTcpTable(tb.data(), &sz, FALSE, AF_INET, TCP_TABLE_OWNER_MODULE_ALL, 0) == NO_ERROR) {
+        auto* t = reinterpret_cast<MIB_TCPTABLE_OWNER_MODULE*>(tb.data());
+        for (DWORD i = 0; i < t->dwNumEntries && i < 500; ++i) {
+            auto& r = t->table[i];
+            char b[32];
+            std::snprintf(b, sizeof(b), "%u", ntohs((u_short)(r.dwRemotePort & 0xFFFF)));
+            std::string local;
+            std::snprintf(b, sizeof(b), "%u", ntohs((u_short)(r.dwLocalPort & 0xFFFF)));
+            local = b;
+            ports_by_pid[r.dwOwningPid] += local + " ";
+        }
+    }
+    std::string assoc;
+    for (const auto& [pid, ports] : ports_by_pid) {
+        auto it = cmd_by_pid.find(pid);
+        if (it != cmd_by_pid.end() && !ports.empty())
+            assoc += "PID " + std::to_string(pid) + " 本地端口[" + ports + "] " + it->second.substr(0, 120) + "\n";
+    }
+    Evidence e;
+    e.source_kind = "wmi";
+    e.source_path = "Win32_Process(CommandLine) + TCP owner 关联";
+    e.payload = "with_cmdline=" + std::to_string(cnt) + "\n" + listing +
+                (assoc.empty() ? "" : "--- 端口关联 ---\n" + assoc);
+    ctx.add_evidence(e);
+    ctx.checked_source("WMI Win32_Process");
+    ctx.note("cmdline 经 WMI 只读采集；服务进程命令行可能为空");
+    ctx.set_status(ModuleStatus::PASS);
+}
+
+// ---- WIN.FILES：用户目录巡检（双扩展名/临时目录可执行/基线比对）----
+static bool looks_exec_name(const std::string& low) {
+    return ends_with(low, ".exe") || ends_with(low, ".scr") || ends_with(low, ".com") ||
+           ends_with(low, ".bat") || ends_with(low, ".cmd") || ends_with(low, ".js") ||
+           ends_with(low, ".vbs") || ends_with(low, ".ps1") || ends_with(low, ".jar");
+}
+
+void mod_files(ModuleCtx& ctx) {
+    // 目录集
+    std::vector<std::string> dirs;
+    char tmp[MAX_PATH]{};
+    if (GetTempPathA(MAX_PATH, tmp)) dirs.push_back(std::string(tmp));
+    char up[MAX_PATH]{};
+    if (SUCCEEDED(SHGetFolderPathA(nullptr, CSIDL_PROFILE, nullptr, 0, up))) {
+        std::string u = up;
+        dirs.push_back(u + "\\Downloads");
+        dirs.push_back(u + "\\Desktop");
+    }
+    dirs.push_back("C:\\Users\\Public");
+    for (const auto& d : ctx.config().extra_dirs) dirs.push_back(d);
+    // 基线装载（"路径 sha256" 或 "sha256 路径" 双序兼容；64 hex 识别）
+    std::map<std::string, std::string> baseline; // lower(path) → sha256
+    if (!ctx.config().baseline_path.empty()) {
+        ctx.planned_source(ctx.config().baseline_path);
+        ReadResult br = read_text_file(ctx.config().baseline_path, 4 * 1024 * 1024);
+        if (br.ok) {
+            for_each_line(br.content, [&](int, const std::string& line) {
+                std::istringstream is(line);
+                std::string path, sha;
+                std::string tok;
+                while (is >> tok) {
+                    if (tok.size() == 64) {
+                        bool hexish = true;
+                        for (char c : tok)
+                            if (!std::isxdigit(static_cast<unsigned char>(c))) { hexish = false; break; }
+                        if (hexish) { sha = to_lower(tok); continue; }
+                    }
+                    if (path.empty()) path = tok;
+                }
+                if (!path.empty() && sha.size() == 64) baseline[to_lower(path)] = sha;
+            });
+            ctx.checked_source("基线清单 " + std::to_string(baseline.size()) + " 条");
+        } else {
+            ctx.omitted_source(ctx.config().baseline_path, br.access_status);
+        }
+    }
+    int files = 0;
+    int double_ext = 0, tempexe = 0, mismatch = 0;
+    std::set<std::string> baseline_seen;
+    // 简单深度受限遍历
+    struct Walker {
+        static void walk(ModuleCtx& ctx, const std::string& dir, int depth, int& files,
+                         int& double_ext, int& tempexe, int& mismatch,
+                         std::map<std::string, std::string>& baseline,
+                         std::set<std::string>& baseline_seen) {
+            if (depth > 3 || files > 800 || ctx.expired()) return;
+            WIN32_FIND_DATAA fd;
+            HANDLE fh = FindFirstFileA((dir + "\\*").c_str(), &fd);
+            if (fh == INVALID_HANDLE_VALUE) return;
+            do {
+                if (fd.cFileName[0] == '.') continue;
+                std::string fp = dir + "\\" + fd.cFileName;
+                if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                    walk(ctx, fp, depth + 1, files, double_ext, tempexe, mismatch, baseline, baseline_seen);
+                    if (files > 800 || ctx.expired()) break;
+                    continue;
+                }
+                if (++files > 800) break;
+                std::string low = to_lower(fp);
+                std::string namelow = to_lower(fd.cFileName);
+                // 双扩展名（invoice.pdf.exe 类；排除合法归档 .tar.gz 等）
+                if (namelow.find('.', 1) != std::string::npos) {
+                    size_t last = namelow.rfind('.');
+                    std::string lastext = namelow.substr(last);
+                    std::string before = namelow.substr(0, last);
+                    size_t prev = before.rfind('.');
+                    std::string prevext = prev == std::string::npos ? "" : before.substr(prev);
+                    bool prev_archive = prevext == ".zip" || prevext == ".rar" || prevext == ".7z" ||
+                                        prevext == ".tar" || prevext == ".gz" || prevext == ".bz2" ||
+                                        prevext == ".xz" || prevext == ".tgz";
+                    if (looks_exec_name(namelow) && !prev_archive && !prevext.empty()) {
+                        ++double_ext;
+                        Finding f;
+                        f.rule_id = "WIN.FILES.DOUBLEEXT.001";
+                        f.severity = "medium";
+                        f.confidence = "medium";
+                        f.rationale = "疑似双扩展名伪装（" + prevext + " → " + lastext +
+                                      "）: " + fp + "——仅为伪装线索，需人工查看内容，不判定木马";
+                        f.object_ref = fp;
+                        f.advice_id = "ADVICE.WEBSHELL.REVIEW.001";
+                        ctx.add_finding(f);
+                    }
+                }
+                // 临时目录可执行
+                if (looks_exec_name(namelow) && is_writable_path(fp)) {
+                    ++tempexe;
+                    Finding f;
+                    f.rule_id = "WIN.FILES.TEMPEXE.001";
+                    f.severity = "medium";
+                    f.confidence = "medium";
+                    f.rationale = "可执行文件位于临时/可写目录: " + fp.substr(0, 180);
+                    f.object_ref = fp;
+                    f.advice_id = "ADVICE.MINER.REVIEW.001";
+                    ctx.add_finding(f);
+                }
+                // 基线比对（W06）
+                if (!baseline.empty()) {
+                    auto it = baseline.find(low);
+                    if (it != baseline.end()) {
+                        baseline_seen.insert(low);
+                        ReadResult r = read_text_file(fp, 8 * 1024 * 1024);
+                        if (r.ok && r.raw_sha256 != it->second) {
+                            ++mismatch;
+                            Finding f;
+                            f.rule_id = "WIN.FILES.BASELINE.001";
+                            f.severity = "medium";
+                            f.confidence = "high";
+                            f.rationale = "基线哈希不一致: " + fp +
+                                          "（基线 " + it->second.substr(0, 16) + "… / 当前 " +
+                                          r.raw_sha256.substr(0, 16) + "…）——仅对清单内文件判定；无合理解释（编辑/换行转换）需人工核实";
+                            f.object_ref = fp;
+                            f.advice_id = "ADVICE.HASH.BASELINE.001";
+                            ctx.add_finding(f);
+                        }
+                    }
+                }
+            } while (FindNextFileA(fh, &fd));
+            FindClose(fh);
+        }
+    };
+    for (const auto& d : dirs) {
+        if (!dir_exists(d)) continue;
+        ctx.planned_source(d);
+        Walker::walk(ctx, d, 0, files, double_ext, tempexe, mismatch, baseline, baseline_seen);
+        ctx.checked_source(d);
+    }
+    // 基线内缺失文件
+    for (const auto& [low, sha] : baseline) {
+        if (baseline_seen.count(low)) continue;
+        Finding f;
+        f.rule_id = "WIN.FILES.BASELINE.MISS.001";
+        f.severity = "low";
+        f.confidence = "medium";
+        f.rationale = "基线清单中的文件未找到: " + low + "（被删除/移动？——W06 类考点常见形态）";
+        f.object_ref = low;
+        f.advice_id = "ADVICE.HASH.BASELINE.001";
+        ctx.add_finding(f);
+    }
+    Evidence e;
+    e.source_kind = "dir";
+    e.source_path = "用户目录巡检";
+    e.payload = "files=" + std::to_string(files) + " double_ext=" + std::to_string(double_ext) +
+                " temp_exec=" + std::to_string(tempexe) + " baseline_mismatch=" + std::to_string(mismatch) +
+                " baseline_total=" + std::to_string(baseline.size());
+    ctx.add_evidence(e);
+    ctx.note("巡检有预算与文件数上限（800）；不读文件内容仅哈希（双扩展名文件不执行）");
+    ctx.set_status(ModuleStatus::PASS);
+}
+
 void register_mods_w2(std::vector<Session::ModuleDef>& mods) {
     mods.push_back({"WIN.TASKS", "1.0.0", "windows", [](ModuleCtx& c) { mod_tasks(c); }});
     mods.push_back({"WIN.PROCNET", "1.0.0", "windows", [](ModuleCtx& c) { mod_procnet(c); }});
     mods.push_back({"WIN.EVTLOG", "1.0.0", "windows", [](ModuleCtx& c) { mod_evtlog(c); }});
     mods.push_back({"WIN.WEB", "1.0.0", "windows", [](ModuleCtx& c) { mod_web(c); }});
+    mods.push_back({"WIN.PROCCMD", "1.0.0", "windows", [](ModuleCtx& c) { mod_proccmd(c); }});
+    mods.push_back({"WIN.FILES", "1.0.0", "windows", [](ModuleCtx& c) { mod_files(c); }});
 }
 
 } // namespace ctfir::win
