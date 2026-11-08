@@ -91,5 +91,8 @@ std::string module_result_to_json(const ModuleResult&);
 std::string session_to_json(const ScanSession&);
 // 读取并校验 schema_version：major≠1 → 返回 false 且填 reason（拒绝读取）
 bool session_from_json(const std::string& json_text, ScanSession& out, std::string& reason);
+// 会话目录装载（findings.json / evidence.json 数组；解析失败 false + reason）
+bool findings_from_json(const std::string& text, std::vector<Finding>& out, std::string& reason);
+bool evidence_from_json(const std::string& text, std::vector<Evidence>& out, std::string& reason);
 
 } // namespace ctfir

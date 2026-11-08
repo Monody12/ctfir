@@ -75,6 +75,7 @@ void ModuleCtx::add_finding(Finding f) {
     f.platform = sanitize_utf8(s_.s_.platform_);
     f.status = "FINDING";
     f.rule_version = f.rule_version.empty() ? "1.0.0" : f.rule_version;
+    if (f.evidence_trust.empty()) f.evidence_trust = "live_local";
     f.rationale = sanitize_utf8(f.rationale);
     for (auto& l : f.limitations) l = sanitize_utf8(l);
     if (!find_advice(f.advice_id))
@@ -287,6 +288,18 @@ bool Session::write_outputs(std::string& err) {
             }
             os << "]\n";
             files.emplace_back("advice.json", os.str());
+        }
+        // 证据清单（explain/report 离线装载用）
+        {
+            std::ostringstream os;
+            os << "[\n";
+            for (size_t i = 0; i < evidence_.size(); ++i) {
+                os << evidence_to_json(evidence_[i]);
+                if (i + 1 < evidence_.size()) os << ",";
+                os << "\n";
+            }
+            os << "]\n";
+            files.emplace_back("evidence.json", os.str());
         }
         // 自包含 HTML 报告
         {

@@ -140,3 +140,21 @@
 - 干净基线复扫 0 findings（清理后）✓；导入审计 GUI=系统 DLL（零运行时）
 - CUA 经 RDP 的合成点击不稳定（技能已预警）；改用 schtasks /IT + `--scan` 自动化拉起 + 只读截图，视觉验收达成
 - 夹具清理：hosts.bak 恢复 ✓、ctfir-gui-show 任务删除 ✓、GUI 进程清理 ✓、RDP 回滚 ✓、cmdkey 凭据删除 ✓
+
+## 2026-11-09 WP6（#19：CLI 契约完整版 + 双平台命令矩阵）
+
+**新增**：explain（--session/--finding，按 ID 或规则 ID 匹配，输出证据+七段式建议人工文本）、report（--session/--redact，离线重生成 report.html，IPv4 后两段掩码）、evidence.json 落盘（离线装载用）、findings/evidence JSON 装载器、evidence_trust 默认 live_local。
+
+**命令矩阵（Windows 11 实跑 / CentOS7 容器实跑）**：
+| 命令 | Win11 | CentOS7 |
+|---|---|---|
+| version / doctor | exit 0 ✓ | exit 0 ✓ |
+| scan --out | exit 1（有发现）+ 8 个产物文件 | exit 1 + 8 个产物文件 |
+| explain --session --finding | exit 0 人工文本 ✓（实例：WIN.SVC.SUSPECT.001 BaiduNetdiskUtility，附误报说明） | exit 0 ✓ |
+| report --redact | exit 0 重生成 ✓ | exit 0 ✓ |
+| fix/apply | **exit 3 显式拒绝** ✓ | exit 3 ✓ |
+| 未知命令 / 无参数 | exit 3 ✓ | exit 3 ✓ |
+| scan --out 指向文件 | exit 3（不可写）✓ | — |
+
+**误报回归（PLAN §14.5）**：CentOS 默认 /etc/hosts 的 ip6-localnet 等本地条目命中 LNX.HOSTS.MAP.001（未解释 FP）→ 规则修复（排除 ip6-*/localhost* 前缀），双平台同步；复测 Linux 夹具 24/24、Windows 15/15、CentOS 容器 0 误报。教训：新规则必须在目标发行版默认环境跑负例。
+**Linux 产物**：ctfir `881ce45016de51168a77223cd933875673346f49d5333cf9c9c8eb65e08e759b`

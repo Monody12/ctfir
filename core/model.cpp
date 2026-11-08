@@ -123,6 +123,70 @@ std::string session_to_json(const ScanSession& s) {
     return j.dump(2);
 }
 
+static std::vector<std::string> jarr_str(const json& j, const char* key) {
+    std::vector<std::string> out;
+    if (j.contains(key) && j[key].is_array())
+        for (const auto& x : j[key]) out.push_back(x.get<std::string>());
+    return out;
+}
+
+bool findings_from_json(const std::string& text, std::vector<Finding>& out, std::string& reason) {
+    json j;
+    try { j = json::parse(text); } catch (const std::exception& e) {
+        reason = std::string("parse: ") + e.what(); return false;
+    }
+    if (!j.is_array()) { reason = "not an array"; return false; }
+    out.clear();
+    for (const auto& x : j) {
+        Finding f;
+        f.finding_id = x.value("finding_id", "");
+        f.rule_id = x.value("rule_id", "");
+        f.rule_version = x.value("rule_version", "1.0.0");
+        f.platform = x.value("platform", "");
+        f.evidence_ids = jarr_str(x, "evidence_ids");
+        f.evidence_paths = jarr_str(x, "evidence_paths");
+        f.object_ref = x.value("object_ref", "");
+        f.rationale = x.value("rationale", "");
+        f.severity = x.value("severity", "");
+        f.confidence = x.value("confidence", "");
+        f.evidence_trust = x.value("evidence_trust", "");
+        f.status = x.value("status", "FINDING");
+        f.limitations = jarr_str(x, "limitations");
+        f.advice_id = x.value("advice_id", "");
+        out.push_back(std::move(f));
+    }
+    return true;
+}
+
+bool evidence_from_json(const std::string& text, std::vector<Evidence>& out, std::string& reason) {
+    json j;
+    try { j = json::parse(text); } catch (const std::exception& e) {
+        reason = std::string("parse: ") + e.what(); return false;
+    }
+    if (!j.is_array()) { reason = "not an array"; return false; }
+    out.clear();
+    for (const auto& x : j) {
+        Evidence e;
+        e.evidence_id = x.value("evidence_id", "");
+        e.collector = x.value("collector", "");
+        e.collector_version = x.value("collector_version", "");
+        e.source_kind = x.value("source_kind", "");
+        e.source_path = x.value("source_path", "");
+        e.capture_time_utc = x.value("capture_time_utc", "");
+        e.raw_ref = x.value("raw_ref", "");
+        e.sha256 = x.value("sha256", "");
+        e.object_identity = x.value("object_identity", "");
+        e.access_status = x.value("access_status", "");
+        e.trust = x.value("trust", "");
+        e.redaction = x.value("redaction", "");
+        e.limitations = jarr_str(x, "limitations");
+        e.payload = x.value("payload", "");
+        e.line_context = x.value("line_context", "");
+        out.push_back(std::move(e));
+    }
+    return true;
+}
+
 bool session_from_json(const std::string& text, ScanSession& out, std::string& reason) {
     json j;
     try {

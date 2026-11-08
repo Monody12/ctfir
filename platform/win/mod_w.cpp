@@ -478,7 +478,7 @@ void mod_hosts(ModuleCtx& ctx) {
         std::string ip, name;
         if (!(is >> ip)) return;
         while (is >> name) {
-            if (name == "localhost") continue;
+            if (name == "localhost" || starts_with(name, "ip6-") || starts_with(name, "localhost")) continue;
             if (ip == "127.0.0.1" || ip == "::1") continue;
             Finding f;
             f.rule_id = "WIN.HOSTS.MAP.001";

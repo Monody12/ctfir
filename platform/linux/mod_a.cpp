@@ -405,8 +405,10 @@ void mod_hosts(ModuleCtx& ctx) {
         std::string ip, name;
         if (!(is >> ip)) return;
         while (is >> name) {
-            if (name == "localhost" || name == "localhost.localdomain") continue;
-            if (ip == "127.0.0.1" || ip == "::1") continue;
+            // 发行版默认本地条目（含 IPv6 本地名）不算映射
+            if (name == "localhost" || name == "localhost.localdomain" ||
+                starts_with(name, "ip6-")) continue;
+            if (ip == "127.0.0.1" || ip == "::1" || starts_with(name, "localhost")) continue;
             Finding f;
             f.rule_id = "LNX.HOSTS.MAP.001";
             f.severity = "low";
