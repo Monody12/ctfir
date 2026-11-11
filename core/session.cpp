@@ -55,7 +55,7 @@ void ModuleCtx::omitted_source(const std::string& src, const std::string& reason
     mr_.omitted_sources.push_back(sanitize_utf8(src) + " (" + sanitize_utf8(reason) + ")");
 }
 
-void ModuleCtx::add_evidence(Evidence e) {
+std::string ModuleCtx::add_evidence(Evidence e) {
     e.evidence_id = random_id("ev");
     e.collector = sanitize_utf8(mr_.module_id);
     e.collector_version = mr_.module_version;
@@ -68,6 +68,7 @@ void ModuleCtx::add_evidence(Evidence e) {
     for (auto& l : e.limitations) l = sanitize_utf8(l);
     s_.evidence_.push_back(std::move(e));
     mr_.evidence_ids.push_back(s_.evidence_.back().evidence_id);
+    return s_.evidence_.back().evidence_id;
 }
 
 void ModuleCtx::add_finding(Finding f) {

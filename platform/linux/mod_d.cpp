@@ -130,7 +130,7 @@ void mod_web(ModuleCtx& ctx) {
             le.source_path = lg;
             le.sha256 = r.raw_sha256;
             le.payload = "POST=" + std::to_string(posts) + "\ntop_ip: " + top;
-            ctx.add_evidence(le);
+            std::string ev_id = ctx.add_evidence(le);
             ctx.checked_source(lg);
             if (posts >= 50) {
                 Finding f;
@@ -140,6 +140,7 @@ void mod_web(ModuleCtx& ctx) {
                 f.rationale = "web 日志 POST 集中（" + std::to_string(posts) +
                               " 次）：webshell 交互/上传线索；Top IP 见证据";
                 f.object_ref = lg;
+                f.evidence_ids = {ev_id};
                 f.advice_id = "ADVICE.WEBSHELL.REVIEW.001";
                 ctx.add_finding(f);
             }

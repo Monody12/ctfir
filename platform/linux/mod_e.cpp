@@ -54,6 +54,18 @@ void mod_base_password(ModuleCtx& ctx) {
         auto it = shadow_hash.find(r.name);
         if (it != shadow_hash.end()) hash = it->second;
         else if (r.field2 != "x" && r.field2 != "*" && !r.field2.empty()) hash = r.field2;
+        else if (r.field2.empty()) {
+            // passwd 第二字段为空 = 无密码（legacy 布局/无 shadow 条目）
+            Finding f;
+            f.rule_id = "LNX.BASE.EMPTYPWD.001";
+            f.severity = "high";
+            f.confidence = "high";
+            f.rationale = "账户 \"" + r.name + "\" 为空口令（passwd 第二字段为空）——基线红线项";
+            f.object_ref = "/etc/passwd:" + r.name;
+            f.advice_id = "ADVICE.HARDEN.001";
+            ctx.add_finding(f);
+            continue;
+        }
         else continue;
 
         if (hash.empty()) {
@@ -136,9 +148,9 @@ void mod_base_policy(ModuleCtx& ctx) {
             std::string t = trim(line);
             int seen = 0, p6 = -1, p3 = -1, p1 = -1;
             for (int i = 0; i < (int)t.size(); ++i) {
-                if (t[i] == ':') { ++seen; if (seen == 1) p1 = i; if (seen == 3) p3 = i; if (seen == 7) { p6 = i; break; } }
+                if (t[i] == ':') { ++seen; if (seen == 1) p1 = i; if (seen == 3) p3 = i; if (seen == 6) { p6 = i; break; } }
             }
-            if (seen < 7 || p1 < 0 || p3 < 0 || p6 < 0) return;
+            if (seen < 6 || p1 < 0 || p3 < 0 || p6 < 0) return;
             int uid = std::atoi(t.substr(p3 + 1).c_str());
             if (uid >= 1000) return;
             std::string shell = t.substr(p6 + 1);

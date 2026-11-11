@@ -42,7 +42,7 @@ public:
     void checked_source(const std::string& src);
     void omitted_source(const std::string& src, const std::string& reason);
 
-    void add_evidence(Evidence e);     // 自动补 id/时间/collector/信任度；sanitize_utf8
+    std::string add_evidence(Evidence e); // 自动补 id/时间/collector/信任度；sanitize_utf8；返回 evidence_id
     void add_finding(Finding f);       // 自动补 id/platform/status；advice_id 存在性校验
     std::string save_raw(const std::string& content, const std::string& suggested_name,
                          std::string& sha_out); // 写 evidence/，返回相对路径；失败返回 ""
