@@ -268,3 +268,20 @@ elease\）**：
 **注意**：fix 操作会真实删除 A7C9 部分夹具对象（用户/任务/Run 值/hosts 行）——UserList 已回写恢复；其余对象已删除不再恢复（用户已确认跑不跑 Cleanup 无所谓）。如需重建夹具用 A7C9 Install 脚本。
 
 **发布**：v0.5.0 / 规则包 4.0.0——构建产物同 v0.4 但含 fix 引擎；版本号随下次打包更新。
+
+## 2026-11-12 v0.5 迭代R4（#25：遗漏考点补齐 + A7C9 一键处置闭环）
+
+**R4 遗漏补齐（联网调研 [Bypass007 应急笔记](https://bypass007.github.io/Emergency-Response-Notes/) + [ProbiusOfficial windows-ir-skill 38项检查](https://github.com/ProbiusOfficial/windows-ir-skill)）**：
+- WIN.BASE.PERSIST 模块：WMI MOF 痕迹 / BITS 任务状态 / COM 劫持（HKCU InprocServer32 可写路径）/ 屏幕保护后门 / OpenSSH sshd 哈希留证
+- LNX 深化：webshell 特征扩展（$$变量变量 / preg_replace /e / call_user_func / base64+file_put_contents）/ .htaccess·.user.ini 后门 / btmp 暴力破解计数
+- LNX.BASE.TRUST：hosts.equiv / .rhosts 信任登录
+- LNX.BASE.ROOTPATH：root PATH 含当前目录 "."
+- LNX.BASE.GRUB：GRUB 无密码
+- LNX.BASE.NFS：NFS 导出
+- LNX.BASE.FILEPERM：关键文件其他用户可写
+
+**A7C9 完整闭环（构造→识别→一键批量修复→环境还原）**：
+- 构造（net user / reg add / schtasks / hosts / invoice.pdf.exe）→ 扫描（31 findings）→ `fix --all --yes` → 逐项环境验证（全部消失）→ A7C9 夹具重建
+- 基线策略类（密码长度等）如实标"不在白名单"——改安全策略≠删后门对象
+
+**测试台终态**：单测 22/22×2 | centos-ir-lab 23/23 | Linux 夹具 24/24 | A7C9 七项构造→识别→修复→还原全通过
