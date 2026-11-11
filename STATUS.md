@@ -1,8 +1,12 @@
 # STATUS
 
-- 阶段：**批量执行中——**v0.3 批量完成（自评循环 R2 收工）——三测台全绿，待用户验收**
+- 阶段：**批量执行中——**v0.4 完成（对照决赛指南补基线核查板块）——四测台全绿，距团队赛 3 天**
+- 门禁：单测 22/22×2 | centos-ir-lab 23/23 | A7C9 8/8 | Win7 真机基线 8 发现 | Linux 夹具 24/24
+- 发布：ctfir-v0.4-{windows-x64,linux-x86_64}.zip（hash 见 TEST_RESULTS #23）
+- 考点对照：应急响应/基线核查/加固核查/日志审计 全覆盖；Web 数据库日志（binlog/慢日志）与业务恢复属人工步骤
 - 门禁：单测 22/22 ×2 平台 | centos-ir-lab 15/15 | A7C9 8/8 | Linux 夹具 24/24 | 未解释误报 0
-- 发布：D:\ctfir-buildelease\ctfir-v0.3-{windows-x64,linux-x86_64}.zip（hash 见 TEST_RESULTS #22）
+- 发布：D:\ctfir-build
+elease\ctfir-v0.3-{windows-x64,linux-x86_64}.zip（hash 见 TEST_RESULTS #22）
 - 待用户：360 重启回归 / Server2008R2·CentOS3.10 真机格 / A7C9 Cleanup 决定**（[BATCH-PLAN-M1M5.md](BATCH-PLAN-M1M5.md)）
 - 最后更新：2026-11-08 深夜（北京时间）
 

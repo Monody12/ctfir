@@ -2,7 +2,7 @@
 # ctfir 发布打包（WP8）：双平台 ZIP + SHA256SUMS + BUILDINFO + SBOM
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VER="0.3"
+VER="0.4"
 STAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 REL="/d/ctfir-build/release"
 rm -rf "$REL"; mkdir -p "$REL/win-x64" "$REL/linux-x86_64"

@@ -217,3 +217,29 @@ elease\）**：
 - R1：门禁全绿；gap=单测 15→25 目标未达 → 续（R2）
 - R2：单测 22/22 双平台 ✓；对照 DETECTION-POINTS 全表——所有已列检测点均有规则+用例；未解释误报=0；剩余项（ShimCache 精确时间/Amcache/W10-WMI 消费者/内核专题）均为"不改变验收结论"的增强 → 依框架强制收工
 - 硬停止项（待用户）：宿主机重启后 360 回归 #8/#9；Server2008R2/CentOS3.10 真机格；A7C9 Cleanup 由用户决定是否执行
+
+## 2026-11-12 v0.4（#23：基线核查/中间件族——对照决赛指南补强）
+
+**依据**：决赛指南（2026 经纬杯）考点——团队 AI 综合防御赛 60 分 + 个人安全防护赛 40 分的核心均为「基线核查/系统加固/漏洞修复」，v0.3 只覆盖入侵痕迹侧 → 本轮补齐"安全基线与加固核查"板块。
+
+**新模块（8 个，规则 55+ → 75+）**：
+- WIN.BASE.PWD：密码策略（NetUserModalsGet：最小长度/锁定阈值）→ 越界即报
+- WIN.BASE.ACC：UF_PASSWD_NOTREQD（不需要密码）账户 + Guest 启用
+- WIN.BASE.REG：RDP 启用+NLA、SMBv1、自动登录（明文 DefaultPassword）、登录用户名显示、日志 Retention=0、补丁留证（UBR+HotFix）
+- WIN.BASE.PORTS：TCP LISTEN 白名单核查（数据库绑 0.0.0.0 → medium；RPC 动态端口段白名单）
+- LNX.BASE.PWD：**空口令**（shadow 空 hash + passwd 第二字段直查）、**弱口令现场比对**（crypt 字典比对，哈希不落盘）
+- LNX.BASE.POLICY：login.defs 密码策略、系统账户可登录（uid<1000 + bash）
+- LNX.BASE.KERNEL：ip_forward/suid_dumpable/kptr/dmesg 危险参数 + DirtyCow/DirtyPipe 版本范围线索 + pkexec(PwnKit) 提示
+- LNX.BASE.SERVICES：telnet/vsftpd/tftp 启用、SNMP public、远程日志/NTP 状态
+- MID.REDIS：requirepass 缺失（未授权→写 crontab 拿壳链）、bind 0.0.0.0、protected-mode no
+- MID.MYSQL：skip-grant-tables、local-infile、bind、general_log 定位
+- MID.PHP：allow_url_include/display_errors/expose_php + web 根 phpinfo 文件
+- MID.BACKUP：web 根 .sql/.bak/.tar.gz 等备份泄露
+- REG_MULTI_SZ 解码（BootExecute 等显示修复）
+
+**测试**：centos-ir-lab **23/23**（新增：空口令/root 弱口令 crypt 比对/系统账户可登录/不安全服务/Redis 未授权+PM/MySQL local-infile/phpinfo/基线 mismatch）；Win7 真机基线 8 条发现（密码长度 0/锁定阈值/NOPASSWD×2/日志保留×3/端口——全部为该机真实弱基线，非夹具）；A7C9 八项保持 8/8。
+**过程缺陷修复**：REFPATH 系统任务误报（\Microsoft\ 前缀排除——python 转义吃反斜杠第 4 次）；REG_MULTI_SZ→<binary>；RPC 49152+ 端口白名单；LOGPOST 发现补挂 evidence_id（add_evidence 返回 id）；容器 /etc/hosts bind-mount sed -i 失败 → grep-v 覆写；容器无 python3 → openssl passwd -1 生成弱口令 hash。
+
+**发布（v0.4.0 / 规则包 4.0.0）**：
+- ctfir-v0.4-windows-x64.zip `487ec0f6170204aeb8fa3f25e4a1468b03d1a085bc182b31860122a3db6365d6`
+- ctfir-v0.4-linux-x86_64.zip `f88aca751bdc6acab76102597ff15fb47c51e28b87ed11d1f11dff151c5c4e64`
