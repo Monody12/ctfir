@@ -279,6 +279,24 @@ void mod_base_services(ModuleCtx& ctx) {
         ctx.note("rsyslog 配置了远程日志转发（@ 行）——审计集中化已启用");
     else
         ctx.note("基线提示：未检测到远程日志转发（日志集中审计缺失）");
+    // /etc/environment PATH
+    ReadResult env = read_source(ctx, "/etc/environment", false);
+    if (env.ok) {
+        for_each_line(env.content, [&](int no, const std::string& line) {
+            std::string t = trim(line);
+            if (starts_with(t, "PATH=") && (t.find("/tmp") != std::string::npos || t.find("/dev/shm") != std::string::npos)) {
+                Finding f;
+                f.rule_id = "LNX.BASE.ENVPATH.001";
+                f.severity = "medium";
+                f.confidence = "high";
+                f.rationale = "/etc/environment PATH 含临时目录: " + t.substr(0, 150);
+                f.object_ref = "/etc/environment:" + std::to_string(no);
+                f.advice_id = "ADVICE.HARDEN.001";
+                ctx.add_finding(f);
+            }
+        });
+        ctx.checked_source("/etc/environment");
+    }
     ctx.set_status(ModuleStatus::PASS);
 }
 

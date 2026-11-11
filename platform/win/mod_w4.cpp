@@ -608,6 +608,29 @@ void mod_base_persist(ModuleCtx& ctx) {
         }
     }
 
+    // 12) 浏览器首页劫持
+    {
+        std::string start_page;
+        reg_get(HKEY_CURRENT_USER, L"Software\\Microsoft\\Internet Explorer\\Main",
+                L"Start Page", false, start_page);
+        if (!start_page.empty()) {
+            std::string low = to_lower(start_page);
+            bool known = contains_ci(low, "bing.com") || contains_ci(low, "google.com") ||
+                         contains_ci(low, "baidu.com") || contains_ci(low, "microsoft.com") ||
+                         contains_ci(low, "about:blank");
+            if (!known) {
+                Finding f;
+                f.rule_id = "WIN.BASE.BROWSER.001";
+                f.severity = "low";
+                f.confidence = "medium";
+                f.rationale = "浏览器首页被修改为非常见地址: " + start_page.substr(0, 150) + "（暗链/劫持线索）";
+                f.object_ref = "IE Start Page";
+                f.advice_id = "ADVICE.HOSTS.REVIEW.001";
+                ctx.add_finding(f);
+            }
+        }
+        ctx.checked_source("浏览器首页");
+    }
     ctx.set_status(ModuleStatus::PASS);
 }
 

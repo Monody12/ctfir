@@ -374,7 +374,7 @@ void mod_evtlog(ModuleCtx& ctx) {
     // Security 通道需要管理员；受限令牌下 EvtQuery 失败 → PERMISSION_DENIED
     LPCWSTR channel = L"Security";
     LPCWSTR query = L"*[System[(EventID=4624 or EventID=4625 or EventID=4720 or EventID=4722 "
-                    L"or EventID=4724 or EventID=4725 or EventID=4726 or EventID=4732)]]";
+                    L"or EventID=4724 or EventID=4725 or EventID=4726 or EventID=4732 or EventID=1102)]]";
     EVT_HANDLE q = EvtQuery(nullptr, channel, query, EvtQueryChannelPath | EvtQueryReverseDirection);
     if (!q) {
         DWORD err = GetLastError();
@@ -390,7 +390,8 @@ void mod_evtlog(ModuleCtx& ctx) {
     std::map<std::string, int> fail_ip;
     int fail_total = 0, ok_total = 0, read = 0;
     std::vector<std::string> created;      // 4720 新建账户（逐条 medium）
-    std::vector<std::string> mgmt_timeline; // 4722/4724/4725/4726/4732 聚合
+    std::vector<std::string> mgmt_timeline;
+    bool log_cleared = false; // 4722/4724/4725/4726/4732 聚合
     std::vector<EVT_HANDLE> events(100);
     DWORD returned = 0;
     while (read < 4000 && EvtNext(q, 100, events.data(), 2000, 0, &returned) && returned > 0) {
@@ -416,6 +417,7 @@ void mod_evtlog(ModuleCtx& ctx) {
             std::string ip = xml_data(x, "IpAddress");
             std::string member = xml_data(x, "MemberName");
             std::string group = xml_data(x, "TargetUserName");
+            if (eid == 0) { size_t p1 = x.find("<EventID>"); if (p1 != std::string::npos) eid = std::atoi(x.c_str() + p1 + 9); }
 
             if (eid == 4625) {
                 ++fail_total;
@@ -434,6 +436,9 @@ void mod_evtlog(ModuleCtx& ctx) {
                 mgmt_timeline.push_back(tb + " 删除账户 " + target);
             } else if (eid == 4732) {
                 mgmt_timeline.push_back(tb + " 加入组 " + (member.empty() ? "?" : member) + " → " + group);
+            } else if (eid == 1102) {
+                log_cleared = true;
+                mgmt_timeline.push_back(tb + " 安全日志被清除！");
             }
             EvtClose(events[i]);
         }
@@ -448,6 +453,7 @@ void mod_evtlog(ModuleCtx& ctx) {
     e.payload = "read=" + std::to_string(read) + " fail(4625)=" + std::to_string(fail_total) +
                 " ok(4624)=" + std::to_string(ok_total) +
                 " account_created(4720)=" + std::to_string(created.size()) +
+                " log_cleared(1102)=" + std::string(log_cleared ? "YES" : "no") +
                 "\ntop_fail_ip: " + top +
                 (mgmt_timeline.empty() ? "" : "\n--- 账户管理事件 ---\n" + join(mgmt_timeline, "\n"));
     ctx.add_evidence(e);
@@ -472,6 +478,16 @@ void mod_evtlog(ModuleCtx& ctx) {
         f.rationale = "账户管理事件时间线（启用/重置/禁用/删除/入组，共 " +
                       std::to_string(mgmt_timeline.size()) + " 条）——详见证据；加入管理员组(4732)重点关注";
         f.object_ref = "Security 4722-4732";
+        f.advice_id = "ADVICE.EVENTLOG.REVIEW.001";
+        ctx.add_finding(f);
+    }
+    if (log_cleared) {
+        Finding f;
+        f.rule_id = "WIN.EVT.LOGCLEAR.001";
+        f.severity = "high";
+        f.confidence = "high";
+        f.rationale = "安全日志被清除（Event 1102）——攻击者痕迹擦除的强指标";
+        f.object_ref = "Security 1102";
         f.advice_id = "ADVICE.EVENTLOG.REVIEW.001";
         ctx.add_finding(f);
     }
