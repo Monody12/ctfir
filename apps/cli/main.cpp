@@ -398,10 +398,11 @@ int main(int argc, char** argv) {
     std::string cmd = argv[1];
     if (cmd == "version") return cmd_version();
     if (cmd == "doctor") return cmd_doctor();
-    if (cmd == "fix" || cmd == "apply" || cmd == "repair") {
-        std::fprintf(stderr, "[ctfir] 只读版本不支持修改类命令（%s）。请按报告建议人工执行。\n", cmd.c_str());
+    if (cmd == "apply" || cmd == "repair") {
+        std::fprintf(stderr, "[ctfir] 不支持 %s；受控修复请用 `ctfir fix --session <目录> --finding <规则ID>`（逐条确认）或 --dry-run 预演。\n", cmd.c_str());
         return 3;
     }
+    if (cmd == "fix") return cmd_fix(argc, argv);
     if (cmd == "scan") {
         std::string out_dir, baseline, profile = "full";
         std::vector<std::string> extra_dirs;
@@ -420,7 +421,6 @@ int main(int argc, char** argv) {
                          extra_dirs.size(), baseline.empty() ? "无" : baseline.c_str());
         return cmd_scan(out_dir, extra_dirs, baseline, profile);
     }
-    if (cmd == "fix") return cmd_fix(argc, argv);
     if (cmd == "help") return cmd_help();
     if (cmd == "playbook") return cmd_playbook(argc, argv);
     if (cmd == "diff") return cmd_diff(argc, argv);
