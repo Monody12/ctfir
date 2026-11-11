@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -82,6 +83,45 @@ static bool quarantine_file(const std::string& utf8_path, const std::string& bac
     return true;
 }
 
+#if !defined(_WIN32)
+// 内置（Linux）：UID0 非 root 账户处置——逐个停用+删除
+static int lnx_disable_uid0() {
+    int n = 0;
+    FILE* f = fopen("/etc/passwd", "r");
+    if (!f) return 0;
+    char line[1024];
+    std::vector<std::string> names;
+    while (fgets(line, sizeof(line), f)) {
+        std::string t = trim(line);
+        int p1 = static_cast<int>(t.find(':'));
+        int p2 = static_cast<int>(t.find(':', p1 + 1));
+        int p3 = static_cast<int>(t.find(':', p2 + 1));
+        if (p1 <= 0 || p2 < 0 || p3 < 0) continue;
+        std::string name = t.substr(0, p1);
+        int uid = std::atoi(t.substr(p2 + 1, p3 - p2 - 1).c_str());
+        if (uid == 0 && name != "root") names.push_back(name);
+    }
+    fclose(f);
+    for (const auto& name : names) {
+        std::string d = "usermod -L \"" + name + "\" 2>/dev/null";
+        std::system(d.c_str());
+        std::string del = "userdel -rf \"" + name + "\" 2>/dev/null || userdel -f \"" + name + "\" 2>/dev/null";
+        int rc = std::system(del.c_str());
+        if (rc != 0) {
+            // userdel 被占用进程阻塞（rc=8）→ 直接从 passwd/shadow 移除条目
+            std::string sed = "sed -i '/^" + name + ":/d' /etc/passwd /etc/shadow 2>/dev/null";
+            int rc2 = std::system(sed.c_str());
+            std::cout << "    [UID0] " << name << " userdel rc=" << rc
+                      << " → 直接移除 passwd/shadow 条目 (rc=" << rc2 << ")\n";
+        } else {
+            std::cout << "    [UID0] " << name << " deleted\n";
+        }
+        ++n;
+    }
+    return n;
+}
+#endif
+
 bool run_remediation(const Finding& f, const RemediationPlan& plan, FixContext& fx) {
     std::cout << "\n[*] " << f.rule_id << " @ " << f.object_ref << "\n";
     if (!plan.supported) {
@@ -133,14 +173,38 @@ bool run_remediation(const Finding& f, const RemediationPlan& plan, FixContext& 
         } else if (starts_with(op, "quarantine:")) {
             ok = quarantine_file(op.substr(strlen("quarantine:")), fx.backup_dir);
         }
+#if !defined(_WIN32)
+        else if (op == "__LNX_DISABLE_UID0__") {
+            int n = lnx_disable_uid0();
+            ok = n > 0;
+            std::cout << "    [UID0] processed " << n << " accounts\n";
+        } else if (op == "__LNX_DELETE_UID0__") {
+            ok = true;
+        }
+#endif
         journal(fx, "\"event\":\"native\",\"op\":\"" + op + "\",\"ok\":" + (ok ? "true" : "false"));
         std::cout << "    " << (ok ? "[完成] " : "[失败] ") << op << "\n";
     }
-    // 3) 命令步骤
+    // 3) 命令步骤（__ 前缀 = 引擎内置操作，不经 shell）
+    bool ok_flag = false;
     for (const auto& cmd : plan.steps) {
+        if (starts_with(cmd, "__LNX_DISABLE_UID0__")) {
+#if !defined(_WIN32)
+            int n0 = lnx_disable_uid0();
+            ok_flag = n0 > 0;
+#else
+            ok_flag = false;
+#endif
+            journal(fx, "\"event\":\"native_uid0_disable\",\"ok\":" + std::string(ok_flag ? "true" : "false"));
+            continue;
+        }
+        if (starts_with(cmd, "__LNX_DELETE_UID0__")) {
+            ok_flag = true; // disable 阶段已一并删除
+            continue;
+        }
         std::cout << "    [执行] " << cmd << "\n";
-        bool ok = run_cmd(cmd);
-        journal(fx, "\"event\":\"cmd\",\"cmd\":\"" + sanitize_utf8(cmd) + "\",\"ok\":" + (ok ? "true" : "false"));
+        ok_flag = run_cmd(cmd);
+        journal(fx, "\"event\":\"cmd\",\"cmd\":\"" + sanitize_utf8(cmd) + "\",\"ok\":" + std::string(ok_flag ? "true" : "false"));
     }
     ++fx.executed;
     return true;
