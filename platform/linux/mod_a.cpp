@@ -240,6 +240,27 @@ void mod_ssh(ModuleCtx& ctx) {
                     });
                 }
             }
+            // .ssh/config ProxyCommand 后门
+            {
+                std::string cfg = home + "/.ssh/config";
+                ReadResult cr = read_source(ctx, cfg, false);
+                if (cr.ok) {
+                    for_each_line(cr.content, [&](int lno, const std::string& l) {
+                        std::string tl = trim(l);
+                        if (contains_ci(tl, "ProxyCommand") &&
+                            (contains_ci(tl, "nc ") || contains_ci(tl, "bash") || contains_ci(tl, "/tmp/"))) {
+                            Finding f;
+                            f.rule_id = "LNX.SSH.PROXYCMD.001";
+                            f.severity = "high";
+                            f.confidence = "medium";
+                            f.rationale = "SSH config ProxyCommand 含可疑命令: " + tl.substr(0, 150);
+                            f.object_ref = cfg + ":" + std::to_string(lno);
+                            f.advice_id = "ADVICE.SSHKEY.REVIEW.001";
+                            ctx.add_finding(f);
+                        }
+                    });
+                }
+            }
             // 私钥存在性（仅文件名+哈希，绝不读内容进证据 payload）
             for (const char* kf : {"id_rsa", "id_dsa", "id_ecdsa", "id_ed25519"}) {
                 std::string pk = home + "/.ssh/" + kf;
