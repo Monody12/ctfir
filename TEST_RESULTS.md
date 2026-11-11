@@ -243,3 +243,28 @@ elease\）**：
 **发布（v0.4.0 / 规则包 4.0.0）**：
 - ctfir-v0.4-windows-x64.zip `487ec0f6170204aeb8fa3f25e4a1468b03d1a085bc182b31860122a3db6365d6`
 - ctfir-v0.4-linux-x86_64.zip `f88aca751bdc6acab76102597ff15fb47c51e28b87ed11d1f11dff151c5c4e64`
+
+## 2026-11-12 v0.5（#24：受控修复能力 + 逐点处置闭环验证）
+
+**ADR-009（用户批准）**：默认仍只读；新增 `ctfir fix` 受控修复——白名单操作 + 逐条确认/--yes/--dry-run + 自动备份(fix-backup/) + 日志(fix-journal.jsonl)。
+
+**处置闭环已真机验证的考点**（构造→识别→fix→验证→环境还原）：
+
+| 考点 | 识别 | 修复动作 | 修复后验证 |
+|---|---|---|---|
+| LNX cron 后门 | ✅ | 行注释(`# ctfir-fixed:` 前缀) | ✅ 任务失效 |
+| LNX UID0 后门账户 | ✅ | usermod -L + userdel -rf；占用时 sed 强制移除 | ✅ 账户消失 |
+| Win 禁用账户 A7C9-W01 | ✅ | net user /delete | ✅ 账户消失 |
+| Win UserList=0 A7C9-W02 | ✅ | reg delete 同名值（原值已回写恢复） | ✅ 值消失 |
+| Win Run 引用非常规路径 A7C9-W03 | ✅ | reg delete 值 | ✅ 值消失 |
+| Win 禁用任务 A7C9-W04 | ✅ | schtasks /disable → /delete | ✅ 任务消失 |
+| Win hosts 回环 A7C9-W05 | ✅ | hosts_delete_line 原生删行 | ✅ 行消失 |
+| Win 双扩展名 A7C9-W08 | ✅ | 文件隔离（.quarantine） | ✅（容器侧验证） |
+
+**基线策略类（密码长度/锁定阈值/日志保留等）**：正确设计为不支持一键（改的是安全策略不是后门对象），dry-run 如实显示"不在白名单，按手册人工执行"——用户可在比赛环境自行改策略（一次命令）。
+
+**Win7 真机全量扫描**：23 模块 / 26 findings（含 8 条真实弱基线）/ REFPATH 系统任务误报 0 / 未解释误报 0。
+
+**注意**：fix 操作会真实删除 A7C9 部分夹具对象（用户/任务/Run 值/hosts 行）——UserList 已回写恢复；其余对象已删除不再恢复（用户已确认跑不跑 Cleanup 无所谓）。如需重建夹具用 A7C9 Install 脚本。
+
+**发布**：v0.5.0 / 规则包 4.0.0——构建产物同 v0.4 但含 fix 引擎；版本号随下次打包更新。
