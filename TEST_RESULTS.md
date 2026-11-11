@@ -326,3 +326,8 @@ elease\）**：
 
 **Win7 真机端到端**：netsh add v4tov4 13389→10.99.99.99:3389 → 扫描命中（PortProxy\v4tov4\tcp\*/13389）→ fix --finding --yes → netsh show all 空 + reg query 空 ✓
 **测试台终态**：单测 18/18（Linux）| Linux 夹具 24/24 | centos-ir-lab 27/27 | Win7 真机 31 findings（portproxy 新增）
+
+**R11 全测台回归（夹具重建后）**：
+- A7C9 真机一度 5/8——Run 项/hosts 行/invoice.pdf.exe 三夹具丢失（此前 fix --all 批量修复时被清除，属预期"环境还原"而非检测退化）；重建三夹具后 8/8 全绿
+- 全测台终态：Win 单测 22/22 | Linux 单测 18/18 | Linux 夹具 24/24 | centos-ir-lab 27/27 | A7C9 8/8 | portproxy 检测→修复→还原 ✓
+- 教训：真机夹具是易耗品——每次 fix --all 验证后必须重建再跑回归；断言失败先查夹具存在性再查工具
