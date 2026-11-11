@@ -87,12 +87,13 @@ void mod_sshport(ModuleCtx& ctx) {
     ReadResult r = read_source(ctx, "/etc/ssh/sshd_config", false);
     if (!r.ok) { ctx.set_status(ModuleStatus::PASS); return; }
     std::vector<std::string> ports;
+    int port_line = 0;
     for_each_line(r.content, [&](int no, const std::string& line) {
         std::string t = trim(line);
         if (t.empty() || t[0] == '#') return;
         if (starts_with(t, "Port ") || starts_with(t, "Port\t")) {
             std::string val = trim(t.substr(5));
-            if (!val.empty()) ports.push_back(val);
+            if (!val.empty()) { ports.push_back(val); port_line = no; }
         }
     });
     if (!ports.empty()) {
@@ -105,7 +106,7 @@ void mod_sshport(ModuleCtx& ctx) {
             f.severity = "low";
             f.confidence = "high";
             f.rationale = "SSH 监听非默认端口: " + port_str + "（后门 SSH 可能跑在非标端口上）";
-            f.object_ref = "/etc/ssh/sshd_config";
+            f.object_ref = "/etc/ssh/sshd_config:" + std::to_string(port_line);
             f.advice_id = "ADVICE.SSHKEY.REVIEW.001";
             ctx.add_finding(f);
         }

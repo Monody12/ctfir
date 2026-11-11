@@ -149,11 +149,30 @@ RemediationPlan plan_remediation(const Finding& f) {
         // object_ref: sudoers=file:line / shadow:name / passwd:name
         std::string name = after(obj, ":");
         if (name.empty()) { p.reason = "无法解析账户名"; return p; }
+        // 红线：root 与系统内置账户绝不允许一键删除
+        if (name == "root" || name == "daemon" || name == "bin" || name == "sys" ||
+            name == "sshd" || name == "nobody") {
+            if (rid == "LNX.BASE.WEAKPWD.001") {
+                p.supported = true;
+                p.steps.push_back("passwd -l \"" + name + "\"   # 锁定口令（不删除！）；随后人工 passwd 设置强口令");
+                p.rollback_note = "passwd -u 解锁；root 弱口令只能改密/锁密，绝不可 userdel";
+                return p;
+            }
+            p.reason = "账户 " + name + " 为系统关键账户——不提供一键删除，按手册人工处置";
+            return p;
+        }
         p.supported = true;
         p.backups.push_back("getent passwd \"" + name + "\"; grep \"^" + name + ":\" /etc/shadow | sed 's/\\$[^$]*\\$/\\$HIDDEN\\$/g'");
         p.steps.push_back("usermod -L \"" + name + "\" 2>/dev/null; usermod -s /usr/sbin/nologin \"" + name + "\" 2>/dev/null || usermod -s /sbin/nologin \"" + name + "\"");
-        if (rid != "LNX.BASE.SYSACCT.001")
-            p.steps.push_back("userdel -r \"" + name + "\" 2>/dev/null || userdel \"" + name + "\"");
+        if (rid != "LNX.BASE.SYSACCT.001" && rid != "LNX.BASE.WEAKPWD.001") {
+            // 红线二：home 指向关键目录时禁止 -r（userdel -r 会递归删除家目录——
+            // 家目录=/tmp 的账户会清空整个 /tmp，含工具自身会话与备份）
+            p.steps.push_back(
+                "h=$(getent passwd \"" + name + "\" | cut -d: -f6); case \"$h\" in "
+                "\"/\"|\"/tmp\"|\"/var\"|\"/etc\"|\"/usr\"|\"/bin\"|\"/sbin\"|\"/root\"|\"/dev\"|\"/proc\"|\"/sys\"|\"/boot\"|\"\") "
+                "userdel \"" + name + "\" 2>/dev/null ;; "
+                "*) userdel -r \"" + name + "\" 2>/dev/null || userdel \"" + name + "\" ;; esac");
+        }
         p.rollback_note = "按备份重建账户；shadow 哈希不在备份中（隐私），需重新设置口令";
         return p;
     }
@@ -259,6 +278,64 @@ RemediationPlan plan_remediation(const Finding& f) {
         p.supported = true;
         p.native_ops.push_back("quarantine:" + obj);
         p.rollback_note = "从会话 fix-backup/ 移回原路径即恢复；确认误报后再恢复";
+        return p;
+    }
+    // ---------- R10-R14 新规则修复白名单 ----------
+    // 进程名伪装 → kill（同 MINER 模式）
+    if (rid == "LNX.PROC.NAMEMISMATCH.001") {
+        std::string pid = after(obj, "PID ");
+        if (pid.empty()) { p.reason = "PID 已失效——请重扫后处置"; return p; }
+        p.supported = true;
+        p.steps.push_back("kill -STOP " + pid + " && sleep 1 && kill -9 " + pid);
+        p.rollback_note = "先 STOP 留取证窗口再 KILL；不可逆，确认 /proc/PID/exe 样本已取证";
+        return p;
+    }
+    // SSH 非标端口 / ProxyCommand 后门 → 配置行注释（同 cron 行级模式）
+    if (rid == "LNX.SSH.PORT.001" || rid == "LNX.SSH.PROXYCMD.001") {
+        std::string file = obj.substr(0, obj.rfind(':'));
+        if (file.empty()) { p.reason = "无法解析文件"; return p; }
+        p.supported = true;
+        p.backups.push_back("cp \"" + file + "\" \"${CTFIR_BACKUP_DIR:-/tmp}/\"; grep -n Port \"" + file + "\"");
+        p.native_ops.push_back("linux_comment_line:" + obj);
+        p.rollback_note = "去掉行首 # 即恢复；注意：若业务确实走该端口需改回并 systemctl reload sshd";
+        return p;
+    }
+    // PAM 后门行 → 注释（pam_exec 注入行）
+    if (rid == "LNX.PERSIST.PAM.001") {
+        std::string file = obj.substr(0, obj.rfind(':'));
+        if (file.empty()) { p.reason = "无法解析文件"; return p; }
+        p.supported = true;
+        p.backups.push_back("cp \"" + file + "\" \"${CTFIR_BACKUP_DIR:-/tmp}/\"");
+        p.native_ops.push_back("linux_comment_line:" + obj);
+        p.rollback_note = "去掉行首 # 即恢复；PAM 配置错误可致全系统无法登录——改前务必备份";
+        return p;
+    }
+    // 隐藏密钥 / 攻击工具 / 勒索痕迹 / UDF / .git / 凭据文件 → 隔离
+    if (rid == "LNX.SSH.HIDDENKEY.001" || rid == "LNX.TOOLS.ARTIFACT.001" ||
+        rid == "LNX.TOOLS.FRPCFG.001" || rid == "WIN.TOOLS.ARTIFACT.001" ||
+        rid == "WIN.TOOLS.FRPCFG.001" || rid == "LNX.RANSOM.TRACE.001" ||
+        rid == "WIN.RANSOM.TRACE.001" || rid == "MID.MYSQL.UDF.001" ||
+        rid == "MID.WEB.CREDS.001" || rid == "MID.WEB.GITLEAK.001" ||
+        rid == "LNX.RANSOM.SCRIPT.001") {
+        if (obj.empty()) { p.reason = "无法解析对象路径"; return p; }
+        std::string target = obj;
+        if (target.back() == '/') target.pop_back(); // .git/ 目录形态
+        p.supported = true;
+        p.native_ops.push_back("quarantine:" + target);
+        if (rid == "MID.MYSQL.UDF.001")
+            p.steps.push_back("mysql -N -e \"SELECT * FROM mysql.func;\" 2>/dev/null  # 若有 sys_exec/sys_eval 需 DROP FUNCTION 后重启 mysqld");
+        if (rid == "MID.WEB.GITLEAK.001")
+            p.rollback_note = "整个 .git 目录移入 fix-backup/；站点如依赖 git 部署需确认后再操作";
+        else
+            p.rollback_note = "从会话 fix-backup/ 移回原路径即恢复；确认误报后再恢复";
+        return p;
+    }
+    // 壁纸篡改 → 删除注册表值恢复默认
+    if (rid == "WIN.RANSOM.WALLPAPER.001") {
+        p.supported = true;
+        p.backups.push_back("reg query \"HKCU\\Control Panel\\Desktop\" /v Wallpaper");
+        p.steps.push_back("reg delete \"HKCU\\Control Panel\\Desktop\" /v Wallpaper /f");
+        p.rollback_note = "reg add Wallpaper 原值即恢复；删除后重启资源管理器生效";
         return p;
     }
 

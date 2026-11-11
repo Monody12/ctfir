@@ -17,7 +17,8 @@ cat > /d/ctfir-build/fixtmp/install.sh <<'FIXEOF'
 #!/bin/bash
 sed -i "/ctfir-marker/d;/ctfir-mark-empty/d" /etc/passwd
 echo "ctfir-marker:x:0:0:marker:/tmp:/bin/sh" >> /etc/passwd
-echo "ctfir-mark-empty::19001:19001::/tmp:/bin/sh" >> /etc/passwd
+mkdir -p /home/ctfir-mark-home
+echo "ctfir-mark-empty::19001:19001::/home/ctfir-mark-home:/bin/sh" >> /etc/passwd
 echo "ctfir-mark-sys:x:498:498::/var/empty:/bin/bash" >> /etc/passwd
 echo "* * * * * root curl http://127.0.0.1/ctfir-marker | sh" > /etc/cron.d/ctfir-marker
 echo "127.0.0.1 ctfir-marker.invalid # ctfir-marker" >> /etc/hosts
@@ -192,6 +193,28 @@ a "LNX.TOOLS.ARTIFACT.001"      "fscan 工具命中"         "工具文件漏检
 a "LNX.TOOLS.FRPCFG.001"        "frpc 配置命中"          "frpc 漏检"
 a "LNX.SSH.HIDDENKEY.001"       "点开头公钥命中"         "隐藏 key 漏检"
 grep -q "ADVICE" "$RESF" && ok "建议挂接" || bad "建议缺失"
+
+echo "=== 阶段3.5：fix 一键修复闭环（识别→修复→环境恢复逐项检查）==="
+ex '/tmp/ctfir fix --session /tmp/ctfir-out-pos --all --yes' | grep -E "修复完成|失败 [1-9]" | tail -2
+fchk() { ex "$2" >/d/ctfir-build/fchk.out 2>&1; grep -q "$3" /d/ctfir-build/fchk.out && ok "$1" || bad "$1（环境未恢复）"; }
+fchk "UID0 账户已删"       'grep -c ctfir-marker /etc/passwd || true'      "^0$"
+fchk "cron 行已注释"       'grep -c "ctfir-marker" /etc/cron.d/ctfir-marker || true' "^1$"
+fchk "webshell 已隔离"     'test -f /var/www/html/ctfir-marker.php && echo STILL || echo GONE' "GONE"
+fchk "phpinfo 已隔离"      'test -f /var/www/html/ctfir-marker-phpinfo.php && echo STILL || echo GONE' "GONE"
+fchk "timer 已隔离"        'test -f /etc/systemd/system/ctfir-marker.timer && echo STILL || echo GONE' "GONE"
+fchk "hosts 行已注释"      'grep -c "ctfir-marker" /etc/hosts || true'     "^1$"
+fchk "SSH 2222 行已注释"   'grep -c "^Port 2222" /etc/ssh/sshd_config || true' "^0$"
+fchk "PAM 后门行已注释"    'grep -c "^auth required pam_exec" /etc/pam.d/ctfir-marker-pam || true' "^0$"
+fchk "udf.so 已隔离"       'test -f /usr/lib/mysql/plugin/udf.so && echo STILL || echo GONE' "GONE"
+fchk "fscan 已隔离"        'test -f /opt/fscan_amd64 && echo STILL || echo GONE' "GONE"
+fchk "frpc.ini 已隔离"     'test -f /tmp/frpc.ini && echo STILL || echo GONE' "GONE"
+fchk "勒索信已隔离"        'test -f /root/README_DECRYPT_FILES.html && echo STILL || echo GONE' "GONE"
+fchk ".env 已隔离"         'test -f /var/www/html/.env && echo STILL || echo GONE' "GONE"
+fchk ".git 已隔离"         'test -d /var/www/html/.git && echo STILL || echo GONE' "GONE"
+fchk "点key 已隔离"        'test -f /root/.ssh/.id_rsa.pub && echo STILL || echo GONE' "GONE"
+fchk "伪装进程已杀"        'n=0; for pd in /proc/[0-9]*; do rl=$(readlink "$pd/exe" 2>/dev/null); case "$rl" in *ctfir-mismatch*|*ctfir-rootmw*) n=$((n+1));; esac; done; echo $n' "^0$"
+fchk "install/cleanup 幸存" 'test -f /tmp/install.sh -a -f /tmp/cleanup.sh && echo BOTH || echo LOST' "BOTH"
+fchk "root 未被删除"       'grep -c "^root:" /etc/passwd || true'          "^1$"
 
 echo "=== 阶段4：清理并复验 ==="
 ex '/tmp/cleanup.sh' | tail -1

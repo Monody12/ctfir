@@ -90,7 +90,8 @@ static int lnx_disable_uid0() {
     FILE* f = fopen("/etc/passwd", "r");
     if (!f) return 0;
     char line[1024];
-    std::vector<std::string> names;
+    struct Acct { std::string name; std::string home; };
+    std::vector<Acct> accts;
     while (fgets(line, sizeof(line), f)) {
         std::string t = trim(line);
         int p1 = static_cast<int>(t.find(':'));
@@ -99,22 +100,46 @@ static int lnx_disable_uid0() {
         if (p1 <= 0 || p2 < 0 || p3 < 0) continue;
         std::string name = t.substr(0, p1);
         int uid = std::atoi(t.substr(p2 + 1, p3 - p2 - 1).c_str());
-        if (uid == 0 && name != "root") names.push_back(name);
+        if (uid != 0 || name == "root") continue;
+        // 提取 home（第 6 字段）用于删除护栏
+        int seen = 0, p5 = -1, p6 = -1;
+        for (int i = 0; i < static_cast<int>(t.size()); ++i) {
+            if (t[i] == ':') { ++seen; if (seen == 5) p5 = i; if (seen == 6) { p6 = i; break; } }
+        }
+        std::string home = (p5 >= 0 && p6 > p5) ? t.substr(p5 + 1, p6 - p5 - 1) : "";
+        accts.push_back({name, home});
     }
     fclose(f);
-    for (const auto& name : names) {
-        std::string d = "usermod -L \"" + name + "\" 2>/dev/null";
+    // 关键目录：作为家目录时禁止递归删除（userdel -r 会清空该目录整棵树）
+    static const char* critical_homes[] = {
+        "/", "/tmp", "/var", "/etc", "/usr", "/bin", "/sbin", "/root",
+        "/dev", "/proc", "/sys", "/boot", "/home", "/lib", "/lib64",
+    };
+    for (const auto& a : accts) {
+        std::string d = "usermod -L \"" + a.name + "\" 2>/dev/null";
         std::system(d.c_str());
-        std::string del = "userdel -rf \"" + name + "\" 2>/dev/null || userdel -f \"" + name + "\" 2>/dev/null";
+        bool home_critical = a.home.empty() || a.home == "/tmp" || a.home == "/";
+        if (!home_critical) {
+            for (const char* ch : critical_homes)
+                if (a.home == ch) { home_critical = true; break; }
+        }
+        std::string del;
+        if (home_critical) {
+            std::cout << "    [UID0] " << a.name << " 家目录为关键目录(" << a.home
+                      << ")——不递归删除，仅移除账户条目\n";
+            del = "userdel -f \"" + a.name + "\" 2>/dev/null";
+        } else {
+            del = "userdel -r \"" + a.name + "\" 2>/dev/null || userdel -f \"" + a.name + "\" 2>/dev/null";
+        }
         int rc = std::system(del.c_str());
         if (rc != 0) {
             // userdel 被占用进程阻塞（rc=8）→ 直接从 passwd/shadow 移除条目
-            std::string sed = "sed -i '/^" + name + ":/d' /etc/passwd /etc/shadow 2>/dev/null";
+            std::string sed = "sed -i '/^" + a.name + ":/d' /etc/passwd /etc/shadow 2>/dev/null";
             int rc2 = std::system(sed.c_str());
-            std::cout << "    [UID0] " << name << " userdel rc=" << rc
+            std::cout << "    [UID0] " << a.name << " userdel rc=" << rc
                       << " → 直接移除 passwd/shadow 条目 (rc=" << rc2 << ")\n";
         } else {
-            std::cout << "    [UID0] " << name << " deleted\n";
+            std::cout << "    [UID0] " << a.name << " deleted\n";
         }
         ++n;
     }

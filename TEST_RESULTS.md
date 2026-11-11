@@ -387,3 +387,17 @@ elease\）**：
 
 **验证**：centos-ir-lab 43/43（UDF/error.log/黑链/fscan/frpc/点key 全命中+清理复验）；Win7 真机 fscan/frpc 命中、远控/黑链/GuestAdmin 零误报（负例正确）、夹具即建即删；A7C9 8/8；Win 单测 22/22；Linux 单测 18/18
 **明确不覆盖（如实登记）**：内存马（需 arthas/运行时分析）、Redis 主从复制 module.so 深挖（Redis 配置面已覆盖）、流量包/eml 分析（pcap 域）、shiro key 提取（应用层）
+
+## 2026-11-12 v0.5-R15（#38：修复闭环轮——fix 白名单扩容 + 两个灾难级修复 bug）
+
+**修复白名单扩容（R10-R14 规则接入 fix 引擎）**：
+- 新增：LNX.PROC.NAMEMISMATCH（STOP→KILL）、LNX.SSH.PORT/PROXYCMD（配置行注释）、LNX.PERSIST.PAM（行注释）、LNX.SSH.HIDDENKEY/LNX.TOOLS.*/WIN.TOOLS.*/LNX.RANSOM.*/MID.MYSQL.UDF/MID.WEB.CREDS/GITLEAK（quarantine，.git 目录支持）、WIN.RANSOM.WALLPAPER（reg delete）
+- LNX.SSH.PORT object_ref 补行号（linux_comment_line 需 file:line）
+
+**两个灾难级修复 bug（fix 闭环测试逼出）**：
+1. **root 弱口令 → `userdel -r root`**：WEAKPWD 规则走账户删除分支——真机一旦执行将删除 root！修复：root/daemon/bin/sys/sshd/nobody 永不 userdel；WEAKPWD 一律只锁密（passwd -l）不删除
+2. **home=/tmp 账户 → `userdel -rf` 清空整个 /tmp**：UID0 引擎内置删除 userdel -rf 对家目录无护栏——夹具 ctfir-marker(home=/tmp) 触发后 /tmp 全灭（含 fix-backup 备份目录）。修复：remediate 与 fixengine 两处均加关键目录护栏（/、/tmp、/var、/etc、/usr、/bin、/sbin、/root、/dev、/proc、/sys、/boot、/home、/lib、/lib64）——家目录命中则只删条目不递归
+
+**测台第三踩 pipefail**：fchk 的 `grep -c` 零计数 exit 1 → 管道整体非零误判 FAIL；改为输出落盘 + `|| true` 兜底
+
+**fix --all 闭环（centos-ir-lab 61/61 全绿）**：构造 15 类后门 → 扫描（195 findings）→ fix --all --yes（执行 35/不支持 51）→ **逐项环境恢复检查 18/18**（账户已删/行已注释/文件已隔离/进程已杀/root 幸存/测台脚本幸存）→ 清理复验 ✓
