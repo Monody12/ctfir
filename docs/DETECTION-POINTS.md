@@ -112,5 +112,13 @@
 | 122 | 默认共享未禁 | [等保] | WIN.BASE.DEFSHARE.001 | AutoShareWks 开 | 显式 0 静默 |
 | 123 | 审核子类关闭 | [等保][玄机] | WIN.AUDIT.DISABLED.001 | auditpol No Auditing | 全开静默 |
 | 124 | Windows 勒索痕迹 | [玄机] | WIN.RANSOM.TRACE/WALLPAPER.001 | 勒索信/壁纸篡改 | Themes 白名单 |
+| 125 | MySQL UDF 提权 | [玄机·MySQL题] | MID.MYSQL.UDF.001 | plugin_dir/udf.so | 自定义 .so 走 note |
+| 126 | MySQL error.log 反弹shell | [玄机] | MID.MYSQL.ERRSHELL.001 | bash -i/dev/tcp | — |
+| 127 | web 黑链/黑页 | [玄机·黑链章] | LNX.WEB.BLACKLINK.001 + WIN.WEB.BLACKLINK.001 | 隐藏样式+外链 | — |
+| 128 | 攻击工具遗留 | [玄机×4][知攻×2] | LNX.TOOLS.* / WIN.TOOLS.ARTIFACT/FRPCFG | fscan/frp/nps/ew | 文件名+frp配置特征 |
+| 129 | .ssh 点开头隐藏密钥 | [玄机·行业攻防] | LNX.SSH.HIDDENKEY.001 | /root/.ssh/.id_rsa.pub | — |
+| 130 | Guest 入管理员组 | [知攻·克隆账号] | WIN.ACC.GUESTADMIN.001 | Guest RID501 in Admins | — |
+| 131 | 用户改名事件 | [玄机·evtx] | （W09 4781 时间线） | Administrator→Administratro | — |
+| 132 | 远控软件痕迹 | [玄机·向日葵题] | WIN.RMT.SOFTWARE/RCE.001 | SunLogin/ToDesk 等 | 未装静默；RCE 走日志特征 |
 
-合计 124 检测点（100 + R10+4/R11+2/R12+6/R13+12，来源=决赛指南+玄机题库+等保基线三源对照）↔ 用例库目标 100+ 行。新检测点必须：先入本表（含正负例设计）→ 实现 → 用例行 → 断言通过。
+合计 132 检测点（100 + R10-R14 增补 32，来源=决赛指南+玄机题库(实搜WP)+等保基线+知攻善防靶机）↔ 用例库目标 100+ 行。新检测点必须：先入本表（含正负例设计）→ 实现 → 用例行 → 断言通过。

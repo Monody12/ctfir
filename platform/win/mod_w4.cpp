@@ -818,6 +818,64 @@ void mod_base_persist(ModuleCtx& ctx) {
         ctx.checked_source("域成员状态");
     }
 
+    // 16) 远控软件痕迹（玄机·向日葵整题；Sunlogin/ToDesk/TeamViewer/AnyDesk）
+    {
+        struct RcSoft { const char* dir; const char* name; const char* loghint; };
+        static const RcSoft rcs[] = {
+            {"C:\\Program Files\\Oray\\SunLogin", "向日葵(SunLogin)",
+             "日志在 SunLogin\\SunloginClient\\log——RCE 案需查 PowerShell 路径遍历特征记录"},
+            {"C:\\Program Files (x86)\\Oray\\SunLogin", "向日葵(SunLogin x86)",
+             "日志在 SunLogin\\SunloginClient\\log"},
+            {"C:\\Program Files\\ToDesk", "ToDesk", "日志在 ToDesk\\log"},
+            {"C:\\Program Files\\TeamViewer", "TeamViewer", "日志 TeamViewerXX_Logfile.log"},
+            {"C:\\Program Files (x86)\\TeamViewer", "TeamViewer x86", "日志 TeamViewerXX_Logfile.log"},
+            {"C:\\Program Files\\AnyDesk", "AnyDesk", "痕迹 ad.trace / connection_trace.txt"},
+        };
+        int found_rc = 0;
+        for (const auto& rc : rcs) {
+            if (!dir_exists(rc.dir)) continue;
+            ++found_rc;
+            Finding f;
+            f.rule_id = "WIN.RMT.SOFTWARE.001";
+            f.severity = "low";
+            f.confidence = "high";
+            f.rationale = std::string("检测到远控软件: ") + rc.name + "（" + rc.dir +
+                          "）——" + rc.loghint + "；向日葵曾爆 PowerShell 路径遍历 RCE（CNVD-2022-03661 类）";
+            f.object_ref = rc.dir;
+            f.advice_id = "ADVICE.HARDEN.001";
+            ctx.add_finding(f);
+            // 向日葵日志快速特征（RCE 攻击记录：日志含 WindowsPowerShell 路径遍历）
+            if (std::string(rc.name).find("SunLogin") != std::string::npos) {
+                std::string logdir = std::string(rc.dir) + "\\SunloginClient\\log";
+                WIN32_FIND_DATAA fd;
+                HANDLE fh = FindFirstFileA((logdir + "\\*.log").c_str(), &fd);
+                if (fh != INVALID_HANDLE_VALUE) {
+                    do {
+                        std::string lp = logdir + "\\" + fd.cFileName;
+                        ReadResult r = read_text_file(lp, 4 * 1024 * 1024);
+                        if (!r.ok) continue;
+                        if (r.content.find("WindowsPowerShell") != std::string::npos &&
+                            r.content.find("..\\..\\") != std::string::npos) {
+                            Finding f2;
+                            f2.rule_id = "WIN.RMT.SUNLOGIN.RCE.001";
+                            f2.severity = "high";
+                            f2.confidence = "medium";
+                            f2.rationale = "向日葵日志含路径遍历特征（WindowsPowerShell + ../../）: " +
+                                           lp + "——疑似远控 RCE 攻击记录（首次出现时间≈攻击时间）";
+                            f2.object_ref = lp;
+                            f2.evidence_paths = {lp};
+                            f2.advice_id = "ADVICE.EVENTLOG.REVIEW.001";
+                            ctx.add_finding(f2);
+                        }
+                    } while (FindNextFileA(fh, &fd));
+                    FindClose(fh);
+                }
+            }
+        }
+        if (found_rc == 0) ctx.checked_source("远控软件痕迹 [clean]");
+        else ctx.checked_source("远控软件痕迹（" + std::to_string(found_rc) + " 款）");
+    }
+
     ctx.set_status(ModuleStatus::PASS);
 }
 

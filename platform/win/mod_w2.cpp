@@ -374,7 +374,7 @@ void mod_evtlog(ModuleCtx& ctx) {
     // Security 通道需要管理员；受限令牌下 EvtQuery 失败 → PERMISSION_DENIED
     LPCWSTR channel = L"Security";
     LPCWSTR query = L"*[System[(EventID=4624 or EventID=4625 or EventID=4720 or EventID=4722 "
-                    L"or EventID=4724 or EventID=4725 or EventID=4726 or EventID=4732 or EventID=1102)]]";
+                    L"or EventID=4724 or EventID=4725 or EventID=4726 or EventID=4732 or EventID=4781 or EventID=1102)]]";
     EVT_HANDLE q = EvtQuery(nullptr, channel, query, EvtQueryChannelPath | EvtQueryReverseDirection);
     if (!q) {
         DWORD err = GetLastError();
@@ -436,6 +436,13 @@ void mod_evtlog(ModuleCtx& ctx) {
                 mgmt_timeline.push_back(tb + " 删除账户 " + target);
             } else if (eid == 4732) {
                 mgmt_timeline.push_back(tb + " 加入组 " + (member.empty() ? "?" : member) + " → " + group);
+            } else if (eid == 4781) {
+                // 用户改名（玄机·evtx：Administrator→Administratro 影子手法；字段 OldTargetUserName/NewTargetUserName）
+                std::string oldn = xml_data(x, "OldTargetUserName");
+                std::string newn = xml_data(x, "NewTargetUserName");
+                if (oldn.empty()) oldn = target;
+                mgmt_timeline.push_back(tb + " 改名账户 " + oldn + " → " +
+                                        (newn.empty() ? "?" : newn));
             } else if (eid == 1102) {
                 log_cleared = true;
                 mgmt_timeline.push_back(tb + " 安全日志被清除！");
@@ -588,6 +595,129 @@ void mod_web(ModuleCtx& ctx) {
     re.source_path = "常见 web 根定位";
     re.payload = found.empty() ? "(none)" : found;
     ctx.add_evidence(re);
+
+    // 黑链检测（玄机·黑链章：隐藏样式 + 外部链接）
+    {
+        for (const auto& root : roots) {
+            if (!dir_exists(root)) continue;
+            WIN32_FIND_DATAA fd;
+            HANDLE fh = FindFirstFileA((root + "\\*").c_str(), &fd);
+            if (fh == INVALID_HANDLE_VALUE) continue;
+            do {
+                if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+                std::string fp = root + "\\" + fd.cFileName;
+                std::string low = to_lower(fp);
+                if (!ends_with(low, ".html") && !ends_with(low, ".htm") &&
+                    !ends_with(low, ".php") && !ends_with(low, ".asp"))
+                    continue;
+                ReadResult r = read_text_file(fp, 2 * 1024 * 1024);
+                if (!r.ok) continue;
+                std::string cl = to_lower(r.content);
+                bool hidden = cl.find("display:none") != std::string::npos ||
+                              cl.find("display: none") != std::string::npos ||
+                              cl.find("visibility:hidden") != std::string::npos ||
+                              cl.find("visibility: hidden") != std::string::npos ||
+                              cl.find("font-size:0") != std::string::npos ||
+                              cl.find("font-size: 0") != std::string::npos ||
+                              cl.find("left:-9999") != std::string::npos;
+                if (!hidden) continue;
+                // 隐藏样式文件里再确认有外部 http 链接（排除正常内联样式页）
+                size_t hp = 0;
+                while ((hp = cl.find("href", hp)) != std::string::npos) {
+                    size_t q = cl.find("http://", hp);
+                    if (q != std::string::npos && q < hp + 120) {
+                        Finding f;
+                        f.rule_id = "WIN.WEB.BLACKLINK.001";
+                        f.severity = "medium";
+                        f.confidence = "medium";
+                        f.rationale = "疑似黑链（隐藏样式 + 外部链接）: " + fp.substr(0, 160) +
+                                      "（SEO 暗链/黑页篡改痕迹）";
+                        f.object_ref = fp;
+                        f.advice_id = "ADVICE.WEBSHELL.REVIEW.001";
+                        ctx.add_finding(f);
+                        break;
+                    }
+                    hp += 4;
+                }
+            } while (FindNextFileA(fh, &fd));
+            FindClose(fh);
+        }
+        ctx.checked_source("黑链特征（Windows web 根）");
+    }
+
+    // 攻击工具遗留文件（fscan/frp/nps/mimikatz 等，多份题库出现）
+    {
+        static const char* tool_names[] = {
+            "fscan", "frpc", "frps", "nps", "npc", "chisel", "ngrok",
+            "mimikatz", "rubeus", "inveigh", "sharp", "seatbelt", "earthworm", "ew",
+        };
+        std::vector<std::string> tdirs;
+        char up[MAX_PATH]{};
+        if (SUCCEEDED(SHGetFolderPathA(nullptr, CSIDL_PROFILE, nullptr, 0, up))) {
+            tdirs.push_back(std::string(up) + "\\Desktop");
+            tdirs.push_back(std::string(up) + "\\Downloads");
+        }
+        tdirs.push_back("C:\\Users\\Public");
+        tdirs.push_back("C:\\PerfLogs");
+        char tmp[MAX_PATH]{};
+        if (GetTempPathA(MAX_PATH, tmp)) tdirs.push_back(std::string(tmp));
+        int thits = 0;
+        for (const auto& d : tdirs) {
+            WIN32_FIND_DATAA fd;
+            HANDLE fh = FindFirstFileA((d + "\\*").c_str(), &fd);
+            if (fh == INVALID_HANDLE_VALUE) continue;
+            do {
+                if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+                std::string base = to_lower(fd.cFileName);
+                if (base.find("ctfir") != std::string::npos) continue;
+                for (const char* tn : tool_names) {
+                    if (base.rfind(tn, 0) == 0 || base.find(std::string(tn) + "_") != std::string::npos ||
+                        base.find(std::string(tn) + "-") != std::string::npos || base == tn) {
+                        ++thits;
+                        if (thits <= 8) {
+                            Finding f;
+                            f.rule_id = "WIN.TOOLS.ARTIFACT.001";
+                            f.severity = "medium";
+                            f.confidence = "low";
+                            f.rationale = "疑似攻击工具遗留文件: " + d + "\\" + fd.cFileName +
+                                          "（内网扫描/隧道/凭据工具，需人工核实）";
+                            f.object_ref = d + "\\" + fd.cFileName;
+                            f.advice_id = "ADVICE.MINER.REVIEW.001";
+                            ctx.add_finding(f);
+                        }
+                        break;
+                    }
+                }
+            } while (FindNextFileA(fh, &fd));
+            FindClose(fh);
+        }
+        // frp 配置内容特征
+        for (const auto& d : tdirs) {
+            WIN32_FIND_DATAA fd;
+            HANDLE fh = FindFirstFileA((d + "\\*.ini").c_str(), &fd);
+            if (fh == INVALID_HANDLE_VALUE) continue;
+            do {
+                std::string fp = d + "\\" + fd.cFileName;
+                ReadResult r = read_text_file(fp, 64 * 1024);
+                if (!r.ok) continue;
+                if (r.content.find("[common]") != std::string::npos &&
+                    (r.content.find("server_addr") != std::string::npos ||
+                     r.content.find("server_port") != std::string::npos)) {
+                    Finding f;
+                    f.rule_id = "WIN.TOOLS.FRPCFG.001";
+                    f.severity = "high";
+                    f.confidence = "high";
+                    f.rationale = "frp 隧道配置文件: " + fp + "（[common]/server_addr——内网穿透回连痕迹）";
+                    f.object_ref = fp;
+                    f.evidence_paths = {fp};
+                    f.advice_id = "ADVICE.MINER.REVIEW.001";
+                    ctx.add_finding(f);
+                }
+            } while (FindNextFileA(fh, &fd));
+            FindClose(fh);
+        }
+        ctx.checked_source("攻击工具文件特征");
+    }
 
     // IIS 日志（W3C 格式）：POST Top IP
     {

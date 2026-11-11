@@ -287,6 +287,28 @@ void mod_ssh(ModuleCtx& ctx) {
                 e.limitations = {"隐私保护：仅存在性+哈希"};
                 ctx.add_evidence(e);
             }
+            // .ssh 下点开头隐藏密钥（玄机·行业攻防：/root/.ssh/.id_rsa.pub 藏公钥）
+            for (const auto& hp : list_dir(home + "/.ssh", 100)) {
+                std::string base = hp.substr(hp.find_last_of('/') + 1);
+                if (base.empty() || base[0] != '.') continue;
+                std::string bl = to_lower(base);
+                bool keyish = ends_with(bl, ".pub") || ends_with(bl, ".keystore") ||
+                              bl.find("authoriz") != std::string::npos ||
+                              bl.find("id_rsa") != std::string::npos ||
+                              bl.find("id_ed25519") != std::string::npos ||
+                              bl.find("id_ecdsa") != std::string::npos;
+                if (!keyish) continue;
+                Finding f;
+                f.rule_id = "LNX.SSH.HIDDENKEY.001";
+                f.severity = "medium";
+                f.confidence = "medium";
+                f.rationale = "用户 " + name + " 的 .ssh 下存在点开头隐藏密钥文件: " + base +
+                              "（攻击者藏匿公钥/私钥的常见手法，需核实是否被 AuthorizedKeysFile 引用）";
+                f.object_ref = hp;
+                f.evidence_paths = {hp};
+                f.advice_id = "ADVICE.SSHKEY.REVIEW.001";
+                ctx.add_finding(f);
+            }
         });
     }
     ctx.set_status(ModuleStatus::PASS);

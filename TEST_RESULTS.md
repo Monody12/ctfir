@@ -370,3 +370,20 @@ elease\）**：
 **测台根因修复（重要）**：findings.json 涨过 64KB 管道缓冲后，`set -o pipefail` + `echo "$RES" | grep -q` 产生 SIGPIPE——grep 前部匹配即退出，echo 写入中断 → 老断言（文件前部规则）全误判 FAIL、尾部规则通过。修复=断言改文件 grep（RESF/RESNF/RES2F 落盘），37/37 全绿。教训：大串断言永不经管道。
 
 **验证**：centos-ir-lab 37/37（6 新检测夹具全命中+清理复验）；Win7 真机勒索信/.locked 命中后删除、UAC/BLANKPWD 负例正确、壁纸 TranscodedWallpaper 误报已修（\Themes\ 白名单）；A7C9 8/8；Win 单测 22/22；Linux 单测 18/18
+
+## 2026-11-12 v0.5-R14（#37：实搜题库 WP 逐考点对照——9 真缺口闭环）
+
+**方法论升级**：R13 的"玄机/等保对照"系凭记忆——本轮真正联网抓取两份权威题库全文逐考点对照：玄机应急响应靶场合集 WP（cnblogs backlion，9 章）+ 知攻善防实验室 8 靶机 WP。确认 9 个反复出现的真缺口。
+
+**新检测（8 规则 + 1 事件扩展，#125-132）**：
+- MID.MYSQL.UDF.001 — plugin_dir 下 udf.so（玄机 MySQL 题核心；plugin_dir 配置提取+默认路径兜底）
+- MID.MYSQL.ERRSHELL.001 — error.log/mysqld.log/.err 中 bash -i、/dev/tcp、nc -e（玄机：error.log 藏反弹 shell）
+- LNX.WEB.BLACKLINK.001 + WIN.WEB.BLACKLINK.001 — 黑链（display:none/visibility:hidden/font-size:0 + href="http:// 外链；玄机黑链整章。修一 bug：引号判定反了）
+- LNX.TOOLS.ARTIFACT/FRPCFG + WIN.TOOLS.ARTIFACT/FRPCFG — 攻击工具遗留（fscan/frpc/frps/nps/npc/chisel/ngrok/mimikatz/rubeus/ew 文件名 + frpc.ini [common]/server_addr 内容特征；玄机 NOP Team/行业攻防/运维杰克、知攻善防×2 反复出现）
+- LNX.SSH.HIDDENKEY.001 — .ssh 下点开头隐藏密钥（玄机·行业攻防：/root/.ssh/.id_rsa.pub）
+- WIN.ACC.GUESTADMIN.001 — Guest(RID 501) 在管理员组（知攻善防·克隆账号考点；真机 0 误报）
+- W09 时间线扩展 — Event 4781 用户改名（玄机·evtx：Administrator→Administratro 影子手法）
+- WIN.RMT.SOFTWARE/SUNLOGIN.RCE.001 — 远控软件痕迹（向日葵/ToDesk/TeamViewer/AnyDesk 存在性 + 向日葵日志 PowerShell 路径遍历 RCE 特征）
+
+**验证**：centos-ir-lab 43/43（UDF/error.log/黑链/fscan/frpc/点key 全命中+清理复验）；Win7 真机 fscan/frpc 命中、远控/黑链/GuestAdmin 零误报（负例正确）、夹具即建即删；A7C9 8/8；Win 单测 22/22；Linux 单测 18/18
+**明确不覆盖（如实登记）**：内存马（需 arthas/运行时分析）、Redis 主从复制 module.so 深挖（Redis 配置面已覆盖）、流量包/eml 分析（pcap 域）、shiro key 提取（应用层）

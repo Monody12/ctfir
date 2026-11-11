@@ -293,6 +293,62 @@ void mod_ldso(ModuleCtx& ctx) {
             });
         }
     }
+    // 黑链/黑页检测（玄机·黑链整章：隐藏样式外链 <a href="http://...">）
+    {
+        for (const char* root : {"/var/www/html", "/var/www", "/usr/share/nginx/html"}) {
+            for (const auto& p : list_dir(root, 400)) {
+                std::string low = to_lower(p);
+                if (!ends_with(low, ".html") && !ends_with(low, ".htm") &&
+                    !ends_with(low, ".php") && !ends_with(low, ".asp") &&
+                    !ends_with(low, ".jsp"))
+                    continue;
+                ReadResult r = read_text_file(p, 2 * 1024 * 1024);
+                if (!r.ok) continue;
+                // 隐藏样式关键词 + 外链组合判定
+                size_t pos = 0;
+                int hits = 0;
+                while (hits < 3) {
+                    size_t a = r.content.find("href", pos);
+                    if (a == std::string::npos) break;
+                    // 找此 href 前后 200 字符窗口内的隐藏样式
+                    size_t w0 = a > 200 ? a - 200 : 0;
+                    std::string win = r.content.substr(w0, std::min<size_t>(r.content.size() - w0, 400));
+                    to_lower(win);
+                    bool hidden = win.find("display:none") != std::string::npos ||
+                                  win.find("display: none") != std::string::npos ||
+                                  win.find("visibility:hidden") != std::string::npos ||
+                                  win.find("visibility: hidden") != std::string::npos ||
+                                  win.find("font-size:0") != std::string::npos ||
+                                  win.find("font-size: 0") != std::string::npos ||
+                                  win.find("left:-9999") != std::string::npos ||
+                                  win.find("position:absolute") != std::string::npos;
+                    size_t q1 = r.content.find("http", a);
+                    size_t q2 = r.content.find('"', a);
+                    // href="http://...：引号在 http 之前属属性值外链
+                    bool external = q1 != std::string::npos &&
+                                    (q2 == std::string::npos || q2 < q1) &&
+                                    r.content.compare(q1, 7, "http://") == 0;
+                    if (hidden && external) {
+                        ++hits;
+                        size_t lend = r.content.find('\n', a);
+                        std::string line = r.content.substr(w0, (lend == std::string::npos ? a + 200 : lend) - w0);
+                        Finding f;
+                        f.rule_id = "LNX.WEB.BLACKLINK.001";
+                        f.severity = "medium";
+                        f.confidence = "medium";
+                        f.rationale = "疑似黑链（隐藏样式 + 外部链接）: " + p + " → " +
+                                      line.substr(0, 140) + "（SEO 暗链/黑页篡改痕迹）";
+                        f.object_ref = p;
+                        f.advice_id = "ADVICE.WEBSHELL.REVIEW.001";
+                        ctx.add_finding(f);
+                        break; // 每文件报一次
+                    }
+                    pos = a + 4;
+                }
+            }
+        }
+        ctx.checked_source("黑链特征（隐藏样式+外链）");
+    }
     // btmp 暴力破解计数
     {
         FILE* bf = fopen("/var/log/btmp", "rb");

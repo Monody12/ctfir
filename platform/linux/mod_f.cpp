@@ -123,6 +123,70 @@ void mod_mysql(ModuleCtx& ctx) {
             }
         }
     }
+    // UDF 提权痕迹（玄机·MySQL 题核心：plugin_dir 下 udf.so）
+    {
+        std::string plugin_dir;
+        for (const auto& cf : confs) {
+            ReadResult r = read_text_file(cf, 512 * 1024);
+            if (!r.ok) continue;
+            for (const auto& c : parse_conf(r.content)) {
+                if (c.key == "plugin_dir" && !c.val.empty()) { plugin_dir = c.val; break; }
+            }
+            if (!plugin_dir.empty()) break;
+        }
+        if (plugin_dir.empty()) plugin_dir = "/usr/lib/mysql/plugin/"; // 官方默认
+        if (plugin_dir.back() != '/') plugin_dir += '/';
+        for (const auto& p : list_dir(plugin_dir, 100)) {
+            std::string base = to_lower(p.substr(p.find_last_of('/') + 1));
+            if (!ends_with(base, ".so")) continue;
+            bool udf_sus = base.find("udf") != std::string::npos ||
+                           base.find("shell") != std::string::npos ||
+                           base.find("exec") != std::string::npos ||
+                           base.find("cmd") == 0 ||
+                           base == "lib_mysqludf_sys.so";
+            if (udf_sus) {
+                Finding f;
+                f.rule_id = "MID.MYSQL.UDF.001";
+                f.severity = "high";
+                f.confidence = "high";
+                f.rationale = "MySQL plugin 目录存在 UDF 提权模块: " + p +
+                              "（sys_exec/sys_eval 任意命令执行——UDF 提权后门）";
+                f.object_ref = p;
+                f.evidence_paths = {p};
+                f.advice_id = "ADVICE.MINER.REVIEW.001";
+                ctx.add_finding(f);
+            } else {
+                ctx.note("plugin 目录存在自定义 .so（需人工核实来源）: " + p);
+            }
+        }
+    }
+    // MySQL error.log 反弹 shell 痕迹（玄机：error.log 中发现 1.sh 含 bash -i）
+    {
+        std::vector<std::string> elogs = {"/var/log/mysql/error.log", "/var/log/mysql/error.log.1",
+                                          "/var/log/mysqld.log"};
+        for (const auto& d : list_dir("/var/lib/mysql", 100))
+            if (ends_with(to_lower(d), ".err")) elogs.push_back(d);
+        for (const auto& el : elogs) {
+            ReadResult r = read_text_file(el, 16 * 1024 * 1024);
+            if (!r.ok) continue;
+            for_each_line(r.content, [&](int, const std::string& line) {
+                std::string low = to_lower(line);
+                if (low.find("bash -i") != std::string::npos ||
+                    low.find("/dev/tcp/") != std::string::npos ||
+                    (low.find("nc ") != std::string::npos && low.find("-e") != std::string::npos)) {
+                    Finding f;
+                    f.rule_id = "MID.MYSQL.ERRSHELL.001";
+                    f.severity = "high";
+                    f.confidence = "high";
+                    f.rationale = "MySQL 错误日志中发现反弹 shell 语句: " + line.substr(0, 180) +
+                                  "（通过 SQL 写脚本再执行——入侵痕迹）";
+                    f.object_ref = el;
+                    f.advice_id = "ADVICE.WEBSHELL.REVIEW.001";
+                    ctx.add_finding(f);
+                }
+            });
+        }
+    }
     // general_log 内容取证：攻击者常 SELECT ... INTO OUTFILE 写 webshell（日志写马痕迹）
     {
         std::vector<std::string> glogs;

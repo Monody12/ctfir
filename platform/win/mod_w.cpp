@@ -137,6 +137,18 @@ void mod_acc(ModuleCtx& ctx) {
                         f.advice_id = "ADVICE.ACC.REVIEW.001";
                         ctx.add_finding(f);
                     }
+                    // Guest/克隆账号进管理员组（知攻善防·Where-1S-tHe-Hacker：Guest 被加管理员组）
+                    if (mb[i].lgrmi2_sidusage == SidTypeUser && rid == 501) {
+                        Finding f;
+                        f.rule_id = "WIN.ACC.GUESTADMIN.001";
+                        f.severity = "high";
+                        f.confidence = "high";
+                        f.rationale = "Guest 账户在管理员组内: " + mname +
+                                      " [" + sidtxt + "]——克隆账号/提权痕迹（Guest 默认不属管理员组）";
+                        f.object_ref = "Administrators:" + mname;
+                        f.advice_id = "ADVICE.ACC.REVIEW.001";
+                        ctx.add_finding(f);
+                    }
                 }
             }
             Evidence e;

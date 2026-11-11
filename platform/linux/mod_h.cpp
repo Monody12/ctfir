@@ -274,6 +274,69 @@ void mod_ransom(ModuleCtx& ctx) {
     ctx.set_status(ModuleStatus::PASS);
 }
 
+// ---- LNX.TOOLS：攻击工具遗留文件（fscan/frp/nps/ew/chisel 等，多份题库反复出现）----
+void mod_tools(ModuleCtx& ctx) {
+    static const char* tool_names[] = {
+        "fscan", "frpc", "frps", "nps", "npc", "chisel", "regeorg",
+        "ew ", "ngrok", "tunna", "venom", "iox", "svbus",
+    };
+    static const char* roots[] = {"/tmp", "/var/tmp", "/root", "/opt", "/home", "/dev/shm", "/usr/local/bin"};
+    int hits = 0;
+    for (const char* root : roots) {
+        for (const auto& p : list_dir(root, 500)) {
+            if (ctx.expired()) break;
+            struct stat st{};
+            if (lstat(p.c_str(), &st) != 0) continue;
+            std::string base = to_lower(p.substr(p.find_last_of('/') + 1));
+            if (base.find("ctfir-marker") != std::string::npos) continue;
+            // 文件名特征（fscan/frpc 等，允许带版本号/后缀）
+            for (const char* tn : tool_names) {
+                std::string t(tn);
+                while (!t.empty() && t.back() == ' ') t.pop_back();
+                if (t.empty()) continue;
+                if (base.rfind(t, 0) == 0 || base.find(t + "_") != std::string::npos ||
+                    base.find(t + "-") != std::string::npos || base == t) {
+                    // 目录命中也报（如 /opt/fscan）；frp 配置一并提示
+                    ++hits;
+                    if (hits <= 8) {
+                        Finding f;
+                        f.rule_id = "LNX.TOOLS.ARTIFACT.001";
+                        f.severity = "medium";
+                        f.confidence = "low";
+                        f.rationale = "疑似攻击工具遗留文件: " + p +
+                                      "（内网扫描/隧道工具，攻击者常用，需人工核实）";
+                        f.object_ref = p;
+                        f.advice_id = "ADVICE.MINER.REVIEW.001";
+                        ctx.add_finding(f);
+                    }
+                    break;
+                }
+            }
+            // frp 配置内容特征（文件名任意）
+            if (!S_ISDIR(st.st_mode) && st.st_size < 64 * 1024 &&
+                (ends_with(base, ".ini") || ends_with(base, ".toml") || ends_with(base, ".conf"))) {
+                ReadResult r = read_text_file(p, 64 * 1024);
+                if (r.ok && r.content.find("[common]") != std::string::npos &&
+                    (r.content.find("server_addr") != std::string::npos ||
+                     r.content.find("server_port") != std::string::npos)) {
+                    Finding f;
+                    f.rule_id = "LNX.TOOLS.FRPCFG.001";
+                    f.severity = "high";
+                    f.confidence = "high";
+                    f.rationale = "frp 隧道配置文件: " + p +
+                                  "（[common]/server_addr——内网穿透回连配置，攻击者痕迹）";
+                    f.object_ref = p;
+                    f.evidence_paths = {p};
+                    f.advice_id = "ADVICE.MINER.REVIEW.001";
+                    ctx.add_finding(f);
+                }
+            }
+        }
+    }
+    ctx.note("攻击工具扫描：fscan/frp/nps/ew/chisel 等文件名特征 + frpc 配置内容特征；置信 low 需人工核实");
+    ctx.set_status(ModuleStatus::PASS);
+}
+
 } // namespace
 
 void register_mods_h(std::vector<Session::ModuleDef>& mods) {
@@ -284,6 +347,7 @@ void register_mods_h(std::vector<Session::ModuleDef>& mods) {
     mods.push_back({"LNX.PERSIST.UDEV", "1.0.0", "linux", [](ModuleCtx& c) { mod_udev(c); }});
     mods.push_back({"LNX.MYSQL.SOCK", "1.0.0", "linux", [](ModuleCtx& c) { mod_mysql_socket(c); }});
     mods.push_back({"LNX.RANSOM", "1.0.0", "linux", [](ModuleCtx& c) { mod_ransom(c); }});
+    mods.push_back({"LNX.TOOLS", "1.0.0", "linux", [](ModuleCtx& c) { mod_tools(c); }});
 }
 
 } // namespace ctfir::lnx
