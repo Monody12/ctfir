@@ -156,6 +156,16 @@ RemediationPlan plan_remediation(const Finding& f) {
         p.rollback_note = "去掉 .ctfir-quarantine 后缀移回 + systemctl enable --now 即恢复";
         return p;
     }
+    // ---------- Linux 关键文件权限（恢复 644/600） ----------
+    if (rid == "LNX.BASE.FILEPERM.001") {
+        std::string fp = obj; // 文件路径
+        if (fp.empty()) { p.reason = "无法解析文件路径"; return p; }
+        p.supported = true;
+        p.backups.push_back("stat \"" + fp + "\"");
+        p.steps.push_back("chmod 644 \"" + fp + "\"");
+        p.rollback_note = "按备份的 stat 原模式 chmod 恢复";
+        return p;
+    }
     // ---------- Linux 进程 ----------
     if (rid == "LNX.PROC.MINER.001") {
         std::string pid = after(obj, "PID ");
