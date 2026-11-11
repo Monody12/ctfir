@@ -56,6 +56,14 @@ echo "[core]" > /var/www/html/.git/config
 # 不用 httpd 伪装——Apache master-root 是标准架构，worker 降权即不报）
 cp -f /bin/sleep /tmp/ctfir-rootmw
 bash -c 'exec -a mysqld /tmp/ctfir-rootmw 600' >/dev/null 2>&1 &
+# --- R13: PAM后门 / umask / 失败锁定 / 勒索痕迹 / sshd口令登录 ---
+mkdir -p /etc/pam.d
+echo "auth required pam_exec.so /tmp/ctfir-marker-pam.sh" > /etc/pam.d/ctfir-marker-pam
+echo "umask 022" > /etc/profile.d/ctfir-marker-umask.sh
+printf 'YOUR FILES HAVE BEEN ENCRYPTED\nSend 0.5 BTC\n' > /root/README_DECRYPT_FILES.html
+printf 'secret\n' > /root/victim.docx.locked
+grep -q "^Port " /etc/ssh/sshd_config 2>/dev/null || true
+grep -q "^PasswordAuthentication" /etc/ssh/sshd_config 2>/dev/null || echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config 2>/dev/null
 echo INSTALL_DONE
 FIXEOF
 
@@ -76,6 +84,9 @@ rm -f /etc/cron.d/ctfir-marker /etc/profile.d/ctfir-marker.sh /etc/systemd/syste
       /root/ctfir-marker-recent.sh /tmp/ctfir-mismatch /tmp/ctfir-rootmw \
       /var/www/html/.env /var/lib/mysql/ctfir-general.log
 rm -rf /var/www/html/.git
+rm -f /etc/pam.d/ctfir-marker-pam /etc/profile.d/ctfir-marker-umask.sh \
+      /root/README_DECRYPT_FILES.html /root/victim.docx.locked
+sed -i '/^PasswordAuthentication yes$/d' /etc/ssh/sshd_config 2>/dev/null || true
 [ -f /usr/bin/ls.ctfir-bak ] && mv -f /usr/bin/ls.ctfir-bak /usr/bin/ls
 # argv[0] 伪装使 pgrep -f 失效，改用 exe 符号链接定位（检测同款思路）
 for pd in /proc/[0-9]*; do
@@ -101,7 +112,9 @@ ex 'chmod +x /tmp/ctfir /tmp/install.sh /tmp/cleanup.sh' >/dev/null
 echo "=== 阶段1：负例（centos-ir-lab 原生状态）==="
 ex 'rm -rf /tmp/ctfir-out-neg && /tmp/ctfir scan --out /tmp/ctfir-out-neg >/dev/null 2>&1; echo exit=$?'
 RESN=$(ex 'cat /tmp/ctfir-out-neg/findings.json')
-echo "$RESN" | grep -q "ctfir-marker" && bad "干净环境出现 marker" || ok "干净环境无 marker"
+RESNF=/d/ctfir-build/resn-live.json
+printf '%s' "$RESN" > "$RESNF"
+grep -q "ctfir-marker" "$RESNF" && bad "干净环境出现 marker" || ok "干净环境无 marker"
 ex 'cat /tmp/ctfir-out-neg/findings.json' | grep -o '"rule_id": "[A-Z0-9.]*"' | sort | uniq -c > /d/ctfir-build/centos-native-findings.txt
 echo "（原生发现清单已存 /d/ctfir-build/centos-native-findings.txt）"
 
@@ -112,11 +125,15 @@ echo "=== 阶段3：扫描断言（root + --baseline + --dir）==="
 ex 'mkdir -p /tmp/ctfir-baseline; echo original-one > /tmp/ctfir-baseline/a.txt; echo original-two > /tmp/ctfir-baseline/b.txt; sha256sum /tmp/ctfir-baseline/a.txt /tmp/ctfir-baseline/b.txt | sed "s|/tmp/ctfir-baseline/||" > /tmp/ctfir-baseline.list; echo modified-one > /tmp/ctfir-baseline/a.txt'
 ex 'rm -rf /tmp/ctfir-out-pos && /tmp/ctfir scan --out /tmp/ctfir-out-pos --baseline /tmp/ctfir-baseline.list --dir /tmp/ctfir-baseline >/dev/null 2>&1; echo exit=$?'
 RES=$(ex 'cat /tmp/ctfir-out-pos/findings.json')
+
+ex 'wc -c /tmp/ctfir-out-pos/findings.json; head -c 300 /tmp/ctfir-out-pos/findings.json; echo; ls -la /tmp/ctfir-out-pos/ | head -5' | head -10
 EV=$(ex 'cat /tmp/ctfir-out-pos/evidence.json')
 echo "$EV" > /d/ctfir-build/ev-dump.json
 echo "EV_LEN=${#EV}"
 
-a() { echo "$RES" | grep -q "$1" && ok "$2" || bad "$3"; }
+RESF=/d/ctfir-build/res-live.json
+printf '%s' "$RES" > "$RESF"   # 落盘断言（pipefail+echo 大串会 SIGPIPE 误判）
+a() { grep -q "$1" "$RESF" && ok "$2" || bad "$3"; }
 a "LNX.ACC.UID0.001"            "UID0 命中"              "UID0 漏检"
 a "LNX.PERSIST.CRON.001"        "cron 命中"              "cron 漏检"
 a "LNX.HOSTS.LOOPBACK.001"      "hosts 回环命中"         "hosts 回环漏检"
@@ -148,13 +165,22 @@ a "MID.MYSQL.LOGSHELL.001"      "日志写马命中"           "MySQL 日志取�
 a "MID.WEB.CREDS.001"           ".env 凭据命中"          ".env 漏检"
 a "MID.WEB.GITLEAK.001"         ".git 泄露命中"          ".git 漏检"
 a "LNX.BASE.DROPRIGHT.001"      "root 中间件命中"        "降权漏检"
-echo "$RES" | grep -q "ADVICE"  && ok "建议挂接" || bad "建议缺失"
+echo "--- v0.5-R13 PAM后门/umask/失败锁定/勒索/sshd口令 ---"
+a "LNX.PERSIST.PAM.001"         "PAM 后门命中"           "PAM 后门漏检"
+a "LNX.BASE.UMASK.001"          "umask 过宽命中"         "umask 漏检"
+a "LNX.BASE.FAILLOCK.001"       "失败锁定缺失命中"       "faillock 漏检"
+a "LNX.RANSOM.TRACE.001"        "勒索痕迹命中"           "勒索漏检"
+a "LNX.SSH.PWDAUTH.001"         "sshd 口令登录命中"      "sshd PWDAUTH 漏检"
+a "LNX.BASE.TMOUT.001"          "TMOUT 缺失命中"         "TMOUT 漏检"
+grep -q "ADVICE" "$RESF" && ok "建议挂接" || bad "建议缺失"
 
 echo "=== 阶段4：清理并复验 ==="
 ex '/tmp/cleanup.sh' | tail -1
 ex 'rm -rf /tmp/ctfir-out-clean /tmp/ctfir-baseline /tmp/ctfir-baseline.list && /tmp/ctfir scan --out /tmp/ctfir-out-clean >/dev/null 2>&1'
 RES2=$(ex 'cat /tmp/ctfir-out-clean/findings.json')
-echo "$RES2" | grep -q "ctfir-marker" && bad "清理后残留" || ok "清理复验通过"
+RES2F=/d/ctfir-build/res2-live.json
+printf '%s' "$RES2" > "$RES2F"
+grep -q "ctfir-marker" "$RES2F" && bad "清理后残留" || ok "清理复验通过"
 ex 'rm -rf /tmp/ctfir-out-clean /tmp/ctfir-out-neg /tmp/ctfir-out-pos; rm -f /tmp/ctfir /tmp/install.sh /tmp/cleanup.sh' >/dev/null
 docker stop "$C" >/dev/null 2>&1
 

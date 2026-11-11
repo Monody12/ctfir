@@ -141,6 +141,105 @@ void mod_base_policy(ModuleCtx& ctx) {
             }
         });
     }
+    // umask 基线（等保：默认 umask 应 ≥027；022/002/000 均为弱点）
+    for (const char* pf : {"/etc/profile", "/etc/bashrc", "/etc/bash.bashrc"}) {
+        ReadResult pr = read_text_file(pf, 512 * 1024);
+        if (!pr.ok) continue;
+        for_each_line(pr.content, [&](int no, const std::string& line) {
+            std::string t = trim(line);
+            if (t.empty() || t[0] == '#') return;
+            if (t.find("umask") == std::string::npos) return;
+            // 取 umask 后的值
+            std::istringstream is(t);
+            std::string kw, val;
+            is >> kw >> val;
+            if (kw != "umask" || val.size() < 3) return;
+            // 宽松判定：第二位（group 位）为 0/1 即 <020 → 宽
+            char g = val.size() >= 2 ? val[val.size() - 2] : '7';
+            if (g == '0' || g == '1') {
+                Finding f;
+                f.rule_id = "LNX.BASE.UMASK.001";
+                f.severity = "low";
+                f.confidence = "medium";
+                f.rationale = std::string("默认 umask 过宽（") + pf + ":" + val +
+                              "）——新建文件对组/其他用户可读，基线建议 027/077";
+                f.object_ref = std::string(pf) + ":" + std::to_string(no);
+                f.advice_id = "ADVICE.HARDEN.001";
+                ctx.add_finding(f);
+            }
+        });
+    }
+    // TMOUT 会话超时（等保：shell 应配置自动登出）
+    {
+        bool has_tmout = false;
+        ReadResult pr = read_text_file("/etc/profile", 512 * 1024);
+        if (pr.ok && pr.content.find("TMOUT") != std::string::npos) has_tmout = true;
+        ReadResult pd = read_text_file("/etc/profile.d/tmout.sh", 8 * 1024);
+        if (pd.ok && pd.content.find("TMOUT") != std::string::npos) has_tmout = true;
+        if (!has_tmout) {
+            Finding f;
+            f.rule_id = "LNX.BASE.TMOUT.001";
+            f.severity = "low";
+            f.confidence = "medium";
+            f.rationale = "/etc/profile 未配置 TMOUT 会话超时——空闲会话不自动登出（等保基线项）";
+            f.object_ref = "/etc/profile";
+            f.advice_id = "ADVICE.HARDEN.001";
+            ctx.add_finding(f);
+        }
+    }
+    // 登录失败锁定（等保：应配置 pam_faillock/pam_tally2）
+    {
+        bool has_lock = false;
+        for (const char* pf : {"/etc/pam.d/system-auth", "/etc/pam.d/system-auth-ac",
+                               "/etc/pam.d/sshd", "/etc/pam.d/common-auth"}) {
+            ReadResult pr = read_text_file(pf, 256 * 1024);
+            if (!pr.ok) continue;
+            if (pr.content.find("pam_faillock") != std::string::npos ||
+                pr.content.find("pam_tally") != std::string::npos) {
+                has_lock = true;
+                break;
+            }
+        }
+        if (!has_lock) {
+            Finding f;
+            f.rule_id = "LNX.BASE.FAILLOCK.001";
+            f.severity = "low";
+            f.confidence = "medium";
+            f.rationale = "未配置登录失败锁定（pam_faillock/pam_tally2）——可无限爆破（等保基线项）";
+            f.object_ref = "/etc/pam.d/";
+            f.advice_id = "ADVICE.HARDEN.001";
+            ctx.add_finding(f);
+        }
+        // PAM 后门（玄机经典：pam_exec.so 注入 / 非标准模块路径）
+        for (const auto& p : list_dir("/etc/pam.d", 100)) {
+            ReadResult pr = read_text_file(p, 256 * 1024);
+            if (!pr.ok) continue;
+            for_each_line(pr.content, [&](int no, const std::string& line) {
+                std::string t = trim(line);
+                if (t.empty() || t[0] == '#') return;
+                bool sus = t.find("pam_exec.so") != std::string::npos ||
+                           (t.find("/tmp/") != std::string::npos) ||
+                           (t.find("/dev/shm") != std::string::npos) ||
+                           (t.find(".so") != std::string::npos &&
+                            t.find("/lib64/security/") == std::string::npos &&
+                            t.find("/lib/security/") == std::string::npos &&
+                            t.find("/usr/lib64/security/") == std::string::npos &&
+                            t.find("/usr/lib/security/") == std::string::npos);
+                if (sus) {
+                    Finding f;
+                    f.rule_id = "LNX.PERSIST.PAM.001";
+                    f.severity = "high";
+                    f.confidence = "medium";
+                    f.rationale = "PAM 配置含可疑模块调用（pam_exec/临时目录/非标准 .so 路径）: " +
+                                  t.substr(0, 160) + "（PAM 后门可在登录时执行任意命令）";
+                    f.object_ref = p + ":" + std::to_string(no);
+                    f.advice_id = "ADVICE.HARDEN.001";
+                    ctx.add_finding(f);
+                }
+            });
+        }
+        ctx.checked_source("PAM 配置（失败锁定 + 后门特征）");
+    }
     // 系统账户可登录（uid<1000 且 shell 可登录）
     ReadResult pw = read_text_file("/etc/passwd", 1024 * 1024);
     if (pw.ok) {

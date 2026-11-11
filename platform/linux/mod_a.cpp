@@ -143,6 +143,30 @@ void mod_ssh(ModuleCtx& ctx) {
                 f.advice_id = "ADVICE.SSHKEY.REVIEW.001";
                 ctx.add_finding(f);
             }
+            if (starts_with(t, "PasswordAuthentication") && contains_ci(t, "yes")) {
+                Finding f;
+                f.rule_id = "LNX.SSH.PWDAUTH.001";
+                f.severity = "low";
+                f.confidence = "high";
+                f.rationale = "sshd_config 允许口令登录（PasswordAuthentication yes）——爆破面，基线建议改密钥登录";
+                f.object_ref = "/etc/ssh/sshd_config:" + std::to_string(no);
+                f.advice_id = "ADVICE.SSHKEY.REVIEW.001";
+                ctx.add_finding(f);
+            }
+            if (starts_with(t, "MaxAuthTries")) {
+                int tries = std::atoi(trim(t.substr(13)).c_str());
+                if (tries > 6) {
+                    Finding f;
+                    f.rule_id = "LNX.SSH.MAXAUTH.001";
+                    f.severity = "low";
+                    f.confidence = "high";
+                    f.rationale = "MaxAuthTries=" + std::to_string(tries) +
+                                  "（>6）——单连接可尝试更多口令，利于爆破";
+                    f.object_ref = "/etc/ssh/sshd_config:" + std::to_string(no);
+                    f.advice_id = "ADVICE.HARDEN.001";
+                    ctx.add_finding(f);
+                }
+            }
             if (starts_with(t, "Include")) {
                 std::string inc = trim(t.substr(7));
                 if (!inc.empty()) include_files.push_back(inc);

@@ -755,6 +755,69 @@ void mod_base_persist(ModuleCtx& ctx) {
         }
     }
 
+    // 15) UAC / 空口令限制 / 默认共享 / 域成员（等保基线四项）
+    {
+        std::string v;
+        // UAC（EnableLUA=0 → 提权提示完全失效）
+        reg_get(HKEY_LOCAL_MACHINE,
+                L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+                L"EnableLUA", false, v);
+        if (v == "0x0" || v == "0") {
+            Finding f;
+            f.rule_id = "WIN.BASE.UAC.001";
+            f.severity = "medium";
+            f.confidence = "high";
+            f.rationale = "UAC 已完全禁用（EnableLUA=0）——恶意程序静默提权无拦截（等保基线项）";
+            f.object_ref = "HKLM\\...\\Policies\\System\\EnableLUA";
+            f.advice_id = "ADVICE.HARDEN.001";
+            ctx.add_finding(f);
+        }
+        ctx.checked_source("UAC 状态");
+        // 空口令远程限制（LimitBlankPasswordUse=0 → 空口令账户可远程登录）
+        v.clear();
+        reg_get(HKEY_LOCAL_MACHINE,
+                L"SYSTEM\\CurrentControlSet\\Control\\Lsa",
+                L"LimitBlankPasswordUse", false, v);
+        if (v == "0x0" || v == "0") {
+            Finding f;
+            f.rule_id = "WIN.BASE.BLANKPWD.001";
+            f.severity = "medium";
+            f.confidence = "high";
+            f.rationale = "空口令账户允许网络登录（LimitBlankPasswordUse=0）——配合空口令账户即可远程接管";
+            f.object_ref = "HKLM\\SYSTEM\\...\\Lsa\\LimitBlankPasswordUse";
+            f.advice_id = "ADVICE.HARDEN.001";
+            ctx.add_finding(f);
+        }
+        ctx.checked_source("空口令网络限制");
+        // 默认共享（AutoShareWks 缺省=1 开启；显式 0 才禁用——检测开启状态提示横移面）
+        v.clear();
+        reg_get(HKEY_LOCAL_MACHINE,
+                L"SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters",
+                L"AutoShareWks", false, v);
+        if (v.empty() || v == "0x1" || v == "1") {
+            Finding f;
+            f.rule_id = "WIN.BASE.DEFSHARE.001";
+            f.severity = "low";
+            f.confidence = "medium";
+            f.rationale = "默认共享未禁用（C$/ADMIN$ 可用）——横移便利面；无共享需求建议 AutoShareWks=0";
+            f.object_ref = "LanmanServer\\Parameters\\AutoShareWks";
+            f.advice_id = "ADVICE.HARDEN.001";
+            ctx.add_finding(f);
+        }
+        ctx.checked_source("默认共享状态");
+        // 域成员判定（note：域环境提示横向/凭据传递考点）
+        v.clear();
+        reg_get(HKEY_LOCAL_MACHINE,
+                L"SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters",
+                L"Domain", false, v);
+        if (!v.empty() && to_lower(v) != "workgroup" && to_lower(v) != "wildpackets") {
+            ctx.note("本机属于域: " + v + "——域环境注意域管账号/凭据传递/DSQuery 类考点（本工具不覆盖域枚举）");
+        } else {
+            ctx.note("本机为工作组/独立环境（无 Domain 值）");
+        }
+        ctx.checked_source("域成员状态");
+    }
+
     ctx.set_status(ModuleStatus::PASS);
 }
 

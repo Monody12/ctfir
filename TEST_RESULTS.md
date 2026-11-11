@@ -357,3 +357,16 @@ elease\）**：
 **新检测（2 项，#111-112）**：LNX.BASE.SELINUX.001（/sys/fs/selinux/enforce + /etc/selinux/config 双路；Permissive/disabled → low）+ LNX.BASE.APPARMOR.001（模块启用但无 profile → low）——对应个人赛"安全模块与内核参数配置"字样。
 **验证**：centos-ir-lab 临时 SELINUX=disabled → 命中 → 配置还原 ✓；负例（enforcing/容器无 SELinux）零误报 ✓；回归 31/31 ✓
 **指南对照终态**：主机域考点（基线核查/漏洞修复/系统加固/日志审计/应急响应五维）全部映射到 112 检测点，无剩余缺口；Web 漏洞类/AI 安全类属其他工具域（AutoSQLi/RCE-helper/独立备考），业务恢复/binlog 深挖为已登记人工项。
+
+## 2026-11-12 v0.5-R13（#36：权威题源驱动 12 知识点 + SIGPIPE 测台根因修复）
+
+**方法论**：不再自脑补清单——逐条对照玄机应急响应题库 + 等保基线检查项，确认 12 个真缺口后一次性实现。
+
+**新检测（12 项，DETECTION-POINTS #113-124）**：
+- Linux：LNX.PERSIST.PAM（pam_exec/非标准 .so 路径后门——玄机经典）、LNX.BASE.UMASK（等保 ≥027）、LNX.BASE.FAILLOCK（登录失败未锁定）、LNX.BASE.TMOUT（会话无自动登出）、LNX.SSH.PWDAUTH + LNX.SSH.MAXAUTH（sshd 爆破面）、LNX.RANSOM.TRACE/SCRIPT（勒索信+12 加密扩展名+加密脚本）
+- Windows：WIN.BASE.UAC（EnableLUA=0）、WIN.BASE.BLANKPWD（空口令可网络登录）、WIN.BASE.DEFSHARE（默认共享未禁）、WIN.AUDIT.DISABLED（auditpol 实测抓到 Process Creation 等未开启——"入侵研判证据盲区"）、WIN.RANSOM.TRACE/WALLPAPER（勒索信/加密扩展名/壁纸篡改，真机 2 夹具命中）
+- 域成员 note（域环境提示横向考点）
+
+**测台根因修复（重要）**：findings.json 涨过 64KB 管道缓冲后，`set -o pipefail` + `echo "$RES" | grep -q` 产生 SIGPIPE——grep 前部匹配即退出，echo 写入中断 → 老断言（文件前部规则）全误判 FAIL、尾部规则通过。修复=断言改文件 grep（RESF/RESNF/RES2F 落盘），37/37 全绿。教训：大串断言永不经管道。
+
+**验证**：centos-ir-lab 37/37（6 新检测夹具全命中+清理复验）；Win7 真机勒索信/.locked 命中后删除、UAC/BLANKPWD 负例正确、壁纸 TranscodedWallpaper 误报已修（\Themes\ 白名单）；A7C9 8/8；Win 单测 22/22；Linux 单测 18/18

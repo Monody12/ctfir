@@ -207,6 +207,73 @@ void mod_mysql_socket(ModuleCtx& ctx) {
     ctx.set_status(ModuleStatus::PASS);
 }
 
+// ---- LNX.RANSOM：勒索软件痕迹（玄机/应急响应高频）----
+void mod_ransom(ModuleCtx& ctx) {
+    // 勒索信文件名模式 + 加密扩展名
+    static const char* note_names[] = {
+        "readme", "decrypt", "ransom", "restore", "recover", "how_to", "help_",
+    };
+    static const char* enc_exts[] = {
+        ".locked", ".encrypted", ".crypt", ".enc", ".wcry", ".onion",
+        ".cerber", ".locky", ".crypto", ".enciphered", ".everbe", ".paymen",
+    };
+    static const char* roots[] = {
+        "/root", "/home", "/tmp", "/var/www/html", "/var/www", "/srv",
+    };
+    int hits = 0;
+    for (const char* root : roots) {
+        for (const auto& p : list_dir(root, 600)) {
+            if (ctx.expired()) break;
+            struct stat st{};
+            if (lstat(p.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) continue;
+            std::string base = to_lower(p.substr(p.find_last_of('/') + 1));
+            bool is_note = false;
+            for (const char* kw : note_names)
+                if (base.find(kw) != std::string::npos &&
+                    (ends_with(base, ".txt") || ends_with(base, ".html") ||
+                     ends_with(base, ".hta") || ends_with(base, ".url"))) {
+                    is_note = true; break;
+                }
+            bool is_enc = false;
+            for (const char* ext : enc_exts)
+                if (ends_with(base, ext)) { is_enc = true; break; }
+            if (!is_note && !is_enc) continue;
+            if (base.find("ctfir-marker") != std::string::npos) continue;
+            ++hits;
+            if (hits <= 10) {
+                Finding f;
+                f.rule_id = "LNX.RANSOM.TRACE.001";
+                f.severity = "high";
+                f.confidence = "low";
+                f.rationale = std::string("勒索软件痕迹（") + (is_note ? "勒索信" : "加密扩展名") + "）: " +
+                              p + "——需人工核实内容；已知备份文件误报可能";
+                f.object_ref = p;
+                f.advice_id = "ADVICE.HASH.BASELINE.001";
+                ctx.add_finding(f);
+            }
+        }
+    }
+    // /tmp 下勒索脚本线索
+    for (const auto& p : list_dir("/tmp", 400)) {
+        ReadResult r = read_text_file(p, 64 * 1024);
+        if (!r.ok) continue;
+        if (contains_ci(r.content, "openssl enc") || contains_ci(r.content, "gpg --batch") ||
+            contains_ci(r.content, "--decrypt-files") || contains_ci(r.content, "shred -u")) {
+            Finding f;
+            f.rule_id = "LNX.RANSOM.SCRIPT.001";
+            f.severity = "high";
+            f.confidence = "medium";
+            f.rationale = "疑似加密脚本（openssl enc/gpg --batch/shred）: " + p.substr(0, 160) +
+                          "——勒索软件加密器常见特征";
+            f.object_ref = p;
+            f.advice_id = "ADVICE.MINER.REVIEW.001";
+            ctx.add_finding(f);
+        }
+    }
+    ctx.note("勒索痕迹扫描：勒索信文件名 + 12 种加密扩展名 + /tmp 加密脚本特征；置信度 low 需人工核实");
+    ctx.set_status(ModuleStatus::PASS);
+}
+
 } // namespace
 
 void register_mods_h(std::vector<Session::ModuleDef>& mods) {
@@ -216,6 +283,7 @@ void register_mods_h(std::vector<Session::ModuleDef>& mods) {
     mods.push_back({"LNX.PERSIST.BASHFUNC", "1.0.0", "linux", [](ModuleCtx& c) { mod_bashfunc(c); }});
     mods.push_back({"LNX.PERSIST.UDEV", "1.0.0", "linux", [](ModuleCtx& c) { mod_udev(c); }});
     mods.push_back({"LNX.MYSQL.SOCK", "1.0.0", "linux", [](ModuleCtx& c) { mod_mysql_socket(c); }});
+    mods.push_back({"LNX.RANSOM", "1.0.0", "linux", [](ModuleCtx& c) { mod_ransom(c); }});
 }
 
 } // namespace ctfir::lnx

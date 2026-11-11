@@ -1008,6 +1008,157 @@ void mod_files(ModuleCtx& ctx) {
     ctx.set_status(ModuleStatus::PASS);
 }
 
+// ---- WIN.RANSOM：勒索软件痕迹（勒索信文件名 + 加密扩展名 + 壁纸篡改）----
+void mod_ransom(ModuleCtx& ctx) {
+    static const char* note_kws[] = {
+        "readme", "decrypt", "ransom", "restore_files", "recover", "how_to_decrypt",
+        "help_decrypt", "your_files", "read_me",
+    };
+    static const char* enc_exts[] = {
+        ".locked", ".encrypted", ".crypt", ".wcry", ".onion", ".cerber",
+        ".locky", ".crypto", ".enciphered", ".paymen", ".poisoned", ".crypted",
+    };
+    std::vector<std::string> dirs;
+    char up[MAX_PATH]{};
+    if (SUCCEEDED(SHGetFolderPathA(nullptr, CSIDL_PROFILE, nullptr, 0, up))) {
+        std::string u = up;
+        dirs.push_back(u + "\\Desktop");
+        dirs.push_back(u + "\\Documents");
+        dirs.push_back(u + "\\Downloads");
+    }
+    dirs.push_back("C:\\Users\\Public");
+    int hits = 0;
+    for (const auto& d : dirs) {
+        WIN32_FIND_DATAA fd;
+        HANDLE fh = FindFirstFileA((d + "\\*").c_str(), &fd);
+        if (fh == INVALID_HANDLE_VALUE) continue;
+        do {
+            if (fd.cFileName[0] == '.') continue;
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+            std::string base = to_lower(fd.cFileName);
+            bool is_note = false;
+            for (const char* kw : note_kws)
+                if (base.find(kw) != std::string::npos &&
+                    (ends_with(base, ".txt") || ends_with(base, ".html") ||
+                     ends_with(base, ".hta"))) { is_note = true; break; }
+            bool is_enc = false;
+            for (const char* ext : enc_exts) {
+                std::string e(ext);
+                if (!e.empty() && ends_with(base, e)) { is_enc = true; break; }
+            }
+            if (!is_note && !is_enc) continue;
+            if (base.find("ctfir") != std::string::npos) continue;
+            ++hits;
+            if (hits <= 10) {
+                Finding f;
+                f.rule_id = "WIN.RANSOM.TRACE.001";
+                f.severity = "high";
+                f.confidence = "low";
+                f.rationale = std::string("勒索软件痕迹（") + (is_note ? "勒索信" : "加密扩展名") +
+                              "）: " + d + "\\" + fd.cFileName + "——需人工核实内容";
+                f.object_ref = d + "\\" + fd.cFileName;
+                f.advice_id = "ADVICE.HASH.BASELINE.001";
+                ctx.add_finding(f);
+            }
+        } while (FindNextFileA(fh, &fd));
+        FindClose(fh);
+    }
+    // 壁纸篡改（勒索软件常用：桌面壁纸指向临时/可疑路径或被换成勒索图）
+    {
+        std::string wp;
+        reg_get(HKEY_CURRENT_USER, L"Control Panel\\Desktop", L"Wallpaper", false, wp);
+        // 白名单：Windows 自身壁纸缓存/主题路径（TranscodedWallpaper 等属正常）
+        std::string wpl = to_lower(wp);
+        bool wp_normal = wpl.find("\\themes\\") != std::string::npos ||
+                         wpl.find("\\appdata\\") != std::string::npos ||
+                         wpl.find("\\windows\\web\\") != std::string::npos;
+        if (!wp.empty() && !wp_normal && is_writable_path(wp) && !is_expected_path(wp)) {
+            Finding f;
+            f.rule_id = "WIN.RANSOM.WALLPAPER.001";
+            f.severity = "medium";
+            f.confidence = "low";
+            f.rationale = "桌面壁纸指向非常规路径: " + wp.substr(0, 150) +
+                          "（勒索软件/篡改痕迹线索，需人工看图）";
+            f.object_ref = "HKCU\\Control Panel\\Desktop\\Wallpaper";
+            f.advice_id = "ADVICE.HOSTS.REVIEW.001";
+            ctx.add_finding(f);
+        }
+    }
+    ctx.note("勒索痕迹扫描：勒索信文件名 + 加密扩展名 + 壁纸篡改；置信度 low 需人工核实");
+    ctx.set_status(ModuleStatus::PASS);
+}
+
+// ---- WIN.AUDITPOL：审核策略状态（auditpol 只读收集；等保"日志审计"前提）----
+void mod_auditpol(ModuleCtx& ctx) {
+    // auditpol 输出重定向到临时文件再读取（避免引入管道语义）
+    char tmp[MAX_PATH]{};
+    GetTempPathA(MAX_PATH, tmp);
+    std::string out_file = std::string(tmp) + "ctfir_auditpol.txt";
+    std::string cmd = "auditpol /get /category:* /r > \"" + out_file + "\" 2>nul";
+    int rc = std::system(cmd.c_str());
+    ctx.planned_source("auditpol /get /category:*");
+    if (rc != 0) {
+        ctx.omitted_source("auditpol", "command_failed");
+        DeleteFileA(out_file.c_str());
+        ctx.note("auditpol 执行失败（需管理员权限）——审核策略需人工核对");
+        ctx.set_status(ModuleStatus::PASS);
+        return;
+    }
+    ReadResult r = read_text_file(out_file, 256 * 1024);
+    DeleteFileA(out_file.c_str());
+    if (!r.ok) {
+        ctx.omitted_source(out_file, "not_found");
+        ctx.set_status(ModuleStatus::PASS);
+        return;
+    }
+    // CSV 行：Machine Name,Policy Target,Subcategory,Subcategory GUID,Inclusion Setting,Exclusion Setting
+    int audited = 0, disabled = 0;
+    std::vector<std::string> disabled_high; // 高价值子类被关
+    for_each_line(r.content, [&](int, const std::string& line) {
+        if (line.find(',') == std::string::npos) return;
+        // 取第 3 列（子类）和第 5 列（包含设置）
+        int col = 0;
+        size_t p1 = 0, p2 = 0;
+        std::string sub, inc;
+        for (size_t i = 0; i <= line.size(); ++i) {
+            if (i == line.size() || line[i] == ',') {
+                ++col;
+                std::string cell = line.substr(p1, i - p1);
+                if (col == 3) sub = cell;
+                if (col == 5) { inc = cell; break; }
+                p1 = i + 1;
+            }
+        }
+        if (sub.empty() || inc.empty()) return;
+        ++audited;
+        if (contains_ci(inc, "no auditing")) {
+            ++disabled;
+            if (disabled_high.size() < 8 &&
+                (contains_ci(sub, "logon") || contains_ci(sub, "process creation") ||
+                 contains_ci(sub, "account") || contains_ci(sub, "other logon")))
+                disabled_high.push_back(sub);
+        }
+    });
+    Evidence e;
+    e.source_kind = "command";
+    e.source_path = "auditpol /get /category:*";
+    e.payload = "subcategories=" + std::to_string(audited) + " no_auditing=" + std::to_string(disabled);
+    ctx.add_evidence(e);
+    if (disabled > 0 && !disabled_high.empty()) {
+        Finding f;
+        f.rule_id = "WIN.AUDIT.DISABLED.001";
+        f.severity = "medium";
+        f.confidence = "high";
+        f.rationale = "关键审核子类未开启（No Auditing）: " + join(disabled_high, "、") +
+                      "——相关事件日志将缺失，入侵研判证据盲区（等保基线项）";
+        f.object_ref = "auditpol";
+        f.advice_id = "ADVICE.HARDEN.001";
+        ctx.add_finding(f);
+    }
+    ctx.checked_source("审核策略（auditpol " + std::to_string(audited) + " 子类）");
+    ctx.set_status(ModuleStatus::PASS);
+}
+
 void register_mods_w2(std::vector<Session::ModuleDef>& mods) {
     mods.push_back({"WIN.TASKS", "1.0.0", "windows", [](ModuleCtx& c) { mod_tasks(c); }});
     mods.push_back({"WIN.PROCNET", "1.0.0", "windows", [](ModuleCtx& c) { mod_procnet(c); }});
@@ -1015,6 +1166,8 @@ void register_mods_w2(std::vector<Session::ModuleDef>& mods) {
     mods.push_back({"WIN.WEB", "1.0.0", "windows", [](ModuleCtx& c) { mod_web(c); }});
     mods.push_back({"WIN.PROCCMD", "1.0.0", "windows", [](ModuleCtx& c) { mod_proccmd(c); }});
     mods.push_back({"WIN.FILES", "1.0.0", "windows", [](ModuleCtx& c) { mod_files(c); }});
+    mods.push_back({"WIN.RANSOM", "1.0.0", "windows", [](ModuleCtx& c) { mod_ransom(c); }});
+    mods.push_back({"WIN.AUDITPOL", "1.0.0", "windows", [](ModuleCtx& c) { mod_auditpol(c); }});
 }
 
 } // namespace ctfir::win

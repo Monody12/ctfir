@@ -100,5 +100,17 @@
 | 110 | 中间件未降权运行 | [决赛指南·降权] | LNX.BASE.DROPRIGHT.001 | mysqld root 运行 | nginx/httpd master-root 属标准架构不报 |
 | 111 | SELinux 非强制模式 | [决赛指南·安全模块] | LNX.BASE.SELINUX.001 | SELINUX=disabled | enforcing 静默；容器无 SELinux 走 note |
 | 112 | AppArmor 无 profile | [决赛指南·安全模块] | LNX.BASE.APPARMOR.001 | 模块启用但无加载 | note 级 |
+| 113 | PAM 后门 | [玄机][A=T1543?] | LNX.PERSIST.PAM.001 | pam_exec.so /tmp | 标准 /lib security 路径不报 |
+| 114 | umask 过宽 | [等保] | LNX.BASE.UMASK.001 | umask 022 | ≥027 静默 |
+| 115 | 登录失败未锁定 | [等保] | LNX.BASE.FAILLOCK.001 | 无 pam_faillock | 有即静默 |
+| 116 | 会话无 TMOUT | [等保] | LNX.BASE.TMOUT.001 | /etc/profile 无 TMOUT | 有即静默 |
+| 117 | sshd 允许口令登录 | [等保] | LNX.SSH.PWDAUTH.001 | PasswordAuthentication yes | no 静默 |
+| 118 | sshd MaxAuthTries 过大 | [等保] | LNX.SSH.MAXAUTH.001 | >6 | ≤6 静默 |
+| 119 | Linux 勒索痕迹 | [玄机] | LNX.RANSOM.TRACE/SCRIPT.001 | 勒索信/加密扩展名 | 置信 low |
+| 120 | UAC 禁用 | [等保] | WIN.BASE.UAC.001 | EnableLUA=0 | 1 静默 |
+| 121 | 空口令可网络登录 | [等保] | WIN.BASE.BLANKPWD.001 | LimitBlankPasswordUse=0 | 1 静默 |
+| 122 | 默认共享未禁 | [等保] | WIN.BASE.DEFSHARE.001 | AutoShareWks 开 | 显式 0 静默 |
+| 123 | 审核子类关闭 | [等保][玄机] | WIN.AUDIT.DISABLED.001 | auditpol No Auditing | 全开静默 |
+| 124 | Windows 勒索痕迹 | [玄机] | WIN.RANSOM.TRACE/WALLPAPER.001 | 勒索信/壁纸篡改 | Themes 白名单 |
 
-合计 112 检测点（100 + R10+4 / R11+2 / R12+4 / R12b+2，对照决赛指南逐条校对）↔ 用例库目标 100+ 行。新检测点必须：先入本表（含正负例设计）→ 实现 → 用例行 → 断言通过。
+合计 124 检测点（100 + R10+4/R11+2/R12+6/R13+12，来源=决赛指南+玄机题库+等保基线三源对照）↔ 用例库目标 100+ 行。新检测点必须：先入本表（含正负例设计）→ 实现 → 用例行 → 断言通过。
