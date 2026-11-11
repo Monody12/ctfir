@@ -200,6 +200,70 @@ void mod_base_kernel(ModuleCtx& ctx) {
         }
         ctx.checked_source(kv.path);
     }
+    // SELinux / AppArmor 强制访问控制状态（个人赛"安全模块配置"考点）
+    {
+        bool selinux_reported = false, apparmor_reported = false;
+        // SELinux: /sys/fs/selinux/enforce = 1 强制 / 0 宽容；配置文件兜底
+        ReadResult se = read_text_file("/sys/fs/selinux/enforce", 16);
+        if (se.ok) {
+            std::string v = trim(se.content);
+            if (v == "0") {
+                Finding f;
+                f.rule_id = "LNX.BASE.SELINUX.001";
+                f.severity = "low";
+                f.confidence = "high";
+                f.rationale = "SELinux 处于 Permissive（宽容）模式——强制访问控制未生效（安全加固基线项）";
+                f.object_ref = "/sys/fs/selinux/enforce";
+                f.advice_id = "ADVICE.HARDEN.001";
+                ctx.add_finding(f);
+                selinux_reported = true;
+            } else if (v == "1") {
+                ctx.note("SELinux: Enforcing（强制模式）");
+            }
+        } else {
+            ReadResult cfg = read_text_file("/etc/selinux/config", 64 * 1024);
+            if (cfg.ok) {
+                for_each_line(cfg.content, [&](int, const std::string& line) {
+                    std::string t = trim(line);
+                    if (!t.empty() && t[0] != '#' && starts_with(t, "SELINUX=")) {
+                        std::string mode = trim(t.substr(8));
+                        if (mode != "enforcing") {
+                            Finding f;
+                            f.rule_id = "LNX.BASE.SELINUX.001";
+                            f.severity = "low";
+                            f.confidence = "high";
+                            f.rationale = "SELinux 配置为 " + mode +
+                                          "（非强制模式）——强制访问控制未生效（安全加固基线项）";
+                            f.object_ref = "/etc/selinux/config";
+                            f.advice_id = "ADVICE.HARDEN.001";
+                            ctx.add_finding(f);
+                        }
+                        selinux_reported = true;
+                    }
+                });
+            }
+        }
+        if (!selinux_reported) ctx.note("SELinux: 未安装/未启用（容器环境常见）");
+        // AppArmor（Ubuntu/Debian 系）
+        ReadResult aa = read_text_file("/sys/module/apparmor/parameters/enabled", 16);
+        if (aa.ok && trim(aa.content) == "Y") {
+            // 检查是否有 profile 加载（/sys/kernel/security/apparmor 简化为存在性）
+            if (dir_readable("/sys/kernel/security/apparmor"))
+                ctx.note("AppArmor: 已启用");
+            else {
+                Finding f;
+                f.rule_id = "LNX.BASE.APPARMOR.001";
+                f.severity = "low";
+                f.confidence = "medium";
+                f.rationale = "AppArmor 内核模块已启用但无 profile 加载迹象——强制访问控制可能未覆盖";
+                f.object_ref = "/sys/module/apparmor/parameters/enabled";
+                f.advice_id = "ADVICE.HARDEN.001";
+                ctx.add_finding(f);
+                apparmor_reported = true;
+            }
+        }
+        if (!apparmor_reported) ctx.checked_source("MAC 模块状态（SELinux/AppArmor）");
+    }
     // 内核版本漏洞线索（静态范围表，提示需人工验证）
     std::string ver = detect_os_version(); // uname -r
     auto parse3 = [](const std::string& v, int out[3]) {

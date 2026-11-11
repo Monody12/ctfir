@@ -351,3 +351,9 @@ elease\）**：
 
 **centos-ir-lab 实证（31/31 全绿）**：日志写马（general_log 注入 OUTFILE 语句）/.env 凭据/.git 目录/exec -a mysqld root 假进程 → 4 项一次命中；清理复验通过
 **全测台**：Linux 单测 18/18 | centos-ir-lab 31/31 | 其余测台不受影响（Linux-only 改动）
+
+## 2026-11-12 v0.5-R12b（#35：指南终检——SELinux/AppArmor 安全模块状态）
+
+**新检测（2 项，#111-112）**：LNX.BASE.SELINUX.001（/sys/fs/selinux/enforce + /etc/selinux/config 双路；Permissive/disabled → low）+ LNX.BASE.APPARMOR.001（模块启用但无 profile → low）——对应个人赛"安全模块与内核参数配置"字样。
+**验证**：centos-ir-lab 临时 SELINUX=disabled → 命中 → 配置还原 ✓；负例（enforcing/容器无 SELinux）零误报 ✓；回归 31/31 ✓
+**指南对照终态**：主机域考点（基线核查/漏洞修复/系统加固/日志审计/应急响应五维）全部映射到 112 检测点，无剩余缺口；Web 漏洞类/AI 安全类属其他工具域（AutoSQLi/RCE-helper/独立备考），业务恢复/binlog 深挖为已登记人工项。

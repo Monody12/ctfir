@@ -98,5 +98,7 @@
 | 108 | web 根敏感凭据泄露 | [决赛指南·密钥治理] | MID.WEB.CREDS.001 | .env/.pem/.key/id_rsa | — |
 | 109 | web 根 .git 源码泄露 | [CTF] | MID.WEB.GITLEAK.001 | .git 目录 | — |
 | 110 | 中间件未降权运行 | [决赛指南·降权] | LNX.BASE.DROPRIGHT.001 | mysqld root 运行 | nginx/httpd master-root 属标准架构不报 |
+| 111 | SELinux 非强制模式 | [决赛指南·安全模块] | LNX.BASE.SELINUX.001 | SELINUX=disabled | enforcing 静默；容器无 SELinux 走 note |
+| 112 | AppArmor 无 profile | [决赛指南·安全模块] | LNX.BASE.APPARMOR.001 | 模块启用但无加载 | note 级 |
 
-合计 110 检测点（100 + R10+4 / R11+2 / R12+4，对照决赛指南逐条校对）↔ 用例库目标 100+ 行。新检测点必须：先入本表（含正负例设计）→ 实现 → 用例行 → 断言通过。
+合计 112 检测点（100 + R10+4 / R11+2 / R12+4 / R12b+2，对照决赛指南逐条校对）↔ 用例库目标 100+ 行。新检测点必须：先入本表（含正负例设计）→ 实现 → 用例行 → 断言通过。
