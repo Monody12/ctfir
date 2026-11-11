@@ -331,3 +331,10 @@ elease\）**：
 - A7C9 真机一度 5/8——Run 项/hosts 行/invoice.pdf.exe 三夹具丢失（此前 fix --all 批量修复时被清除，属预期"环境还原"而非检测退化）；重建三夹具后 8/8 全绿
 - 全测台终态：Win 单测 22/22 | Linux 单测 18/18 | Linux 夹具 24/24 | centos-ir-lab 27/27 | A7C9 8/8 | portproxy 检测→修复→还原 ✓
 - 教训：真机夹具是易耗品——每次 fix --all 验证后必须重建再跑回归；断言失败先查夹具存在性再查工具
+
+## 2026-11-12 v0.5-R11b（#33：Windows 近期可执行文件对称补齐 + 终态）
+
+**新检测（1 项，DETECTION-POINTS #106）**：WIN.FILES.RECENT.001 — 用户目录 7 天内修改的可执行/脚本（FILETIME 差值精确计算；与 Linux LNX.BASE.RECENT 对称）。真机验证：新部署的 ctfir.exe/ctfir-gui.exe 正确命中（mtime 今天）。
+
+**五测台终态（R11b 收工）**：Win 单测 22/22 | Linux 单测 18/18 | Linux 夹具 24/24 | centos-ir-lab 27/27 | A7C9 真机 8/8 | portproxy + RECENT 均检测→修复/识别闭环
+**版本**：v0.5.0 | 45 模块 | 106 检测点 | 远端 e1b28d0 → 本轮推送后更新

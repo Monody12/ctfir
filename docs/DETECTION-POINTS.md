@@ -92,5 +92,7 @@
 | 102 | SSH 非默认端口 | [CTF] | LNX.SSH.PORT.001 | sshd_config Port 2222 | 22 静默不报 |
 | 103 | 近期新增/修改可执行文件 | [CTF] | LNX.BASE.RECENT.001 | /root 7 天内 .sh | mtime 线索级 low |
 | 104 | 进程名与 exe 伪装 | [CTF][A=T1036] | LNX.PROC.NAMEMISMATCH.001 | exec -a kworkerd 假进程 | 解释器/busybox 白名单 |
+| 105 | netsh portproxy 转发后门 | [CTF][A=T1090] | WIN.PORTPROXY.001 | v4tov4 13389→外部 | 无规则静默 |
+| 106 | Windows 近期可执行文件 | [CTF] | WIN.FILES.RECENT.001 | 7 天内 mtime exe | 线索级 low |
 
-合计 104 检测点（100 + R10 增补 4）↔ 用例库目标 100+ 行。新检测点必须：先入本表（含正负例设计）→ 实现 → 用例行 → 断言通过。
+合计 106 检测点（100 + R10 增补 4 + R11 增补 2）↔ 用例库目标 100+ 行。新检测点必须：先入本表（含正负例设计）→ 实现 → 用例行 → 断言通过。

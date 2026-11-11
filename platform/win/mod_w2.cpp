@@ -919,6 +919,37 @@ void mod_files(ModuleCtx& ctx) {
                     f.advice_id = "ADVICE.MINER.REVIEW.001";
                     ctx.add_finding(f);
                 }
+                // 最近 7 天修改的可执行/脚本（新投毒线索；mtime 线索级 low）
+                if (looks_exec_name(namelow)) {
+                    SYSTEMTIME st;
+                    FILETIME now_ft;
+                    GetSystemTime(&st);
+                    SystemTimeToFileTime(&st, &now_ft);
+                    ULARGE_INTEGER cur;
+                    cur.LowPart = now_ft.dwLowDateTime;
+                    cur.HighPart = now_ft.dwHighDateTime;
+                    ULARGE_INTEGER wr;
+                    wr.LowPart = fd.ftLastWriteTime.dwLowDateTime;
+                    wr.HighPart = fd.ftLastWriteTime.dwHighDateTime;
+                    // FILETIME 100ns 单位：7 天 = 7 × 86400 × 10,000,000
+                    if (cur.QuadPart > wr.QuadPart &&
+                        (cur.QuadPart - wr.QuadPart) < 7ULL * 86400 * 10000000ULL) {
+                        SYSTEMTIME lst;
+                        FileTimeToSystemTime(&fd.ftLastWriteTime, &lst);
+                        char tbuf[24];
+                        snprintf(tbuf, sizeof(tbuf), "%04d-%02d-%02d %02d:%02d",
+                                 lst.wYear, lst.wMonth, lst.wDay, lst.wHour, lst.wMinute);
+                        Finding f;
+                        f.rule_id = "WIN.FILES.RECENT.001";
+                        f.severity = "low";
+                        f.confidence = "low";
+                        f.rationale = "最近 7 天内修改的可执行/脚本文件: " + fp.substr(0, 180) +
+                                      "（mtime " + tbuf + "）——新投毒线索";
+                        f.object_ref = fp;
+                        f.advice_id = "ADVICE.HASH.BASELINE.001";
+                        ctx.add_finding(f);
+                    }
+                }
                 // 基线比对（W06）
                 if (!baseline.empty()) {
                     auto it = baseline.find(low);
