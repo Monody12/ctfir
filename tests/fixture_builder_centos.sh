@@ -46,6 +46,16 @@ grep -q '^Port ' /etc/ssh/sshd_config 2>/dev/null || echo "Port 2222" >> /etc/ss
 printf '#!/bin/sh\n' > /root/ctfir-marker-recent.sh && chmod 755 /root/ctfir-marker-recent.sh
 cp -f /bin/sleep /tmp/ctfir-mismatch
 bash -c 'exec -a kworkerd /tmp/ctfir-mismatch 600' >/dev/null 2>&1 &
+# --- R12: 数据库日志取证 / 敏感凭据泄露 / 中间件降权 ---
+mkdir -p /var/lib/mysql
+printf '2026-11-12T10:00:01\t 1 Query\tSELECT * FROM users\n2026-11-12T10:00:05\t 1 Query\tSELECT \"<?php eval($_POST[1]);?>\" INTO OUTFILE \"/var/www/html/ctfir-marker-logshell.php\"\n' > /var/lib/mysql/ctfir-general.log
+printf 'APP_KEY=ctfir-marker-secret\nDB_PASSWORD=ctfir-marker-pass\n' > /var/www/html/.env
+mkdir -p /var/www/html/.git/objects
+echo "[core]" > /var/www/html/.git/config
+# root 身份拉起一个伪装名 mysqld 的 sleep（降权检查正例；mysqld 以 root 运行必报。
+# 不用 httpd 伪装——Apache master-root 是标准架构，worker 降权即不报）
+cp -f /bin/sleep /tmp/ctfir-rootmw
+bash -c 'exec -a mysqld /tmp/ctfir-rootmw 600' >/dev/null 2>&1 &
 echo INSTALL_DONE
 FIXEOF
 
@@ -63,7 +73,9 @@ fi
 rm -f /etc/cron.d/ctfir-marker /etc/profile.d/ctfir-marker.sh /etc/systemd/system/ctfir-marker.timer \
       /var/spool/at/ctfir-marker /var/www/html/ctfir-marker.php /var/www/html/ctfir-marker-phpinfo.php \
       /usr/bin/ctfir-marker-cap /etc/redis/redis.conf /etc/my.cnf /tmp/ctfir-php.ini \
-      /root/ctfir-marker-recent.sh /tmp/ctfir-mismatch
+      /root/ctfir-marker-recent.sh /tmp/ctfir-mismatch /tmp/ctfir-rootmw \
+      /var/www/html/.env /var/lib/mysql/ctfir-general.log
+rm -rf /var/www/html/.git
 [ -f /usr/bin/ls.ctfir-bak ] && mv -f /usr/bin/ls.ctfir-bak /usr/bin/ls
 # argv[0] 伪装使 pgrep -f 失效，改用 exe 符号链接定位（检测同款思路）
 for pd in /proc/[0-9]*; do
@@ -131,6 +143,11 @@ a "LNX.BASE.CMDSIZE.001"        "ls 替换命中（大小异常）" "命令替�
 a "LNX.SSH.PORT.001"            "SSH 2222 端口命中"      "SSH 端口漏检"
 a "LNX.BASE.RECENT.001"         "近期可执行文件命中"     "近期文件漏检"
 a "LNX.PROC.NAMEMISMATCH.001"   "进程名伪装命中"         "进程名伪装漏检"
+echo "--- v0.5-R12 数据库日志取证/敏感凭据/降权 ---"
+a "MID.MYSQL.LOGSHELL.001"      "日志写马命中"           "MySQL 日志取证漏检"
+a "MID.WEB.CREDS.001"           ".env 凭据命中"          ".env 漏检"
+a "MID.WEB.GITLEAK.001"         ".git 泄露命中"          ".git 漏检"
+a "LNX.BASE.DROPRIGHT.001"      "root 中间件命中"        "降权漏检"
 echo "$RES" | grep -q "ADVICE"  && ok "建议挂接" || bad "建议缺失"
 
 echo "=== 阶段4：清理并复验 ==="

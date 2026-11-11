@@ -94,5 +94,9 @@
 | 104 | 进程名与 exe 伪装 | [CTF][A=T1036] | LNX.PROC.NAMEMISMATCH.001 | exec -a kworkerd 假进程 | 解释器/busybox 白名单 |
 | 105 | netsh portproxy 转发后门 | [CTF][A=T1090] | WIN.PORTPROXY.001 | v4tov4 13389→外部 | 无规则静默 |
 | 106 | Windows 近期可执行文件 | [CTF] | WIN.FILES.RECENT.001 | 7 天内 mtime exe | 线索级 low |
+| 107 | MySQL 日志写马取证 | [CTF][决赛指南] | MID.MYSQL.LOGSHELL.001 | general_log INTO OUTFILE | 仅核对 ≤3 个日志文件 |
+| 108 | web 根敏感凭据泄露 | [决赛指南·密钥治理] | MID.WEB.CREDS.001 | .env/.pem/.key/id_rsa | — |
+| 109 | web 根 .git 源码泄露 | [CTF] | MID.WEB.GITLEAK.001 | .git 目录 | — |
+| 110 | 中间件未降权运行 | [决赛指南·降权] | LNX.BASE.DROPRIGHT.001 | mysqld root 运行 | nginx/httpd master-root 属标准架构不报 |
 
-合计 106 检测点（100 + R10 增补 4 + R11 增补 2）↔ 用例库目标 100+ 行。新检测点必须：先入本表（含正负例设计）→ 实现 → 用例行 → 断言通过。
+合计 110 检测点（100 + R10+4 / R11+2 / R12+4，对照决赛指南逐条校对）↔ 用例库目标 100+ 行。新检测点必须：先入本表（含正负例设计）→ 实现 → 用例行 → 断言通过。

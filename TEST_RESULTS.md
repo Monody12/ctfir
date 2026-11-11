@@ -338,3 +338,16 @@ elease\）**：
 
 **五测台终态（R11b 收工）**：Win 单测 22/22 | Linux 单测 18/18 | Linux 夹具 24/24 | centos-ir-lab 27/27 | A7C9 真机 8/8 | portproxy + RECENT 均检测→修复/识别闭环
 **版本**：v0.5.0 | 45 模块 | 106 检测点 | 远端 e1b28d0 → 本轮推送后更新
+
+## 2026-11-12 v0.5-R12（#34：决赛指南逐条重对照 → 3 个考点缺口闭环）
+
+**对照方法**：决赛指南 PDF 逐条提取主机域考点（基线核查/日志审计/密钥治理/降权运行/应急响应五维），映射 106 检测点找缺口。Web 漏洞/SQL 注入/AI 安全属其他工具域（AutoSQLi/RCE-helper/独立备考），不在 ctfir 范围。
+
+**新检测（4 项，DETECTION-POINTS #107-110）**：
+- MID.MYSQL.LOGSHELL.001 — MySQL general_log 内容取证：INTO OUTFILE/DUMPFILE + .php//var/www/tmp 特征（日志写马/UDF 提权痕迹；个人赛"数据库日志审计"考点）
+- MID.WEB.CREDS.001 — web 根敏感凭据文件：.env/.pem/.key/id_rsa/.git-credentials/.htpasswd（"密钥与敏感信息保护"考点）
+- MID.WEB.GITLEAK.001 — web 根 .git 目录（源码整站拉取，CTF 高频信息泄露）
+- LNX.BASE.DROPRIGHT.001 — 中间件未降权：mysqld/redis/php-fpm/java root 运行直接报；nginx/httpd 采用两段式判定（同名字存在非 root 实例=master-root 标准架构，不报）——避免 Apache 标准部署全环境误报
+
+**centos-ir-lab 实证（31/31 全绿）**：日志写马（general_log 注入 OUTFILE 语句）/.env 凭据/.git 目录/exec -a mysqld root 假进程 → 4 项一次命中；清理复验通过
+**全测台**：Linux 单测 18/18 | centos-ir-lab 31/31 | 其余测台不受影响（Linux-only 改动）
