@@ -175,6 +175,15 @@ RemediationPlan plan_remediation(const Finding& f) {
         p.rollback_note = "先 STOP 取证窗口再 KILL；不可逆，确认样本已取证";
         return p;
     }
+    // ---------- SUID 权限收敛（去掉 SUID 位） ----------
+    if (rid == "LNX.SUID.UNEXPECTED.001") {
+        if (obj.empty()) { p.reason = "无法解析文件路径"; return p; }
+        p.supported = true;
+        p.backups.push_back("stat \"" + obj + "\"");
+        p.steps.push_back("chmod u-s \"" + obj + "\"");
+        p.rollback_note = "chmod u+s 恢复；仅去掉 SUID 位不删文件";
+        return p;
+    }
     // ---------- webshell / 可疑文件隔离（双平台） ----------
     if (rid == "LNX.WEB.SHELL.001" || rid == "WIN.WEB.WEBSHELL.001" ||
         rid == "WIN.FILES.DOUBLEEXT.001" || rid == "MID.WEB.BACKUP.001" ||
