@@ -2,13 +2,18 @@
 #include "core/session.hpp"
 #include "core/report.hpp"
 #include "core/advice.hpp"
+#include "core/remediate.hpp"
+#include "core/fixengine.hpp"
 #include "core/util.hpp"
 #include "platform/modules_registry.hpp"
 
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <filesystem>
 #include <set>
+
+namespace fs = std::filesystem;
 #include <sstream>
 #include <string>
 #include <vector>
@@ -156,6 +161,54 @@ static int cmd_playbook(int argc, char** argv) {
     }
     std::fprintf(stderr, "[ctfir] 未知手册类型: %s\n", t.c_str());
     return 3;
+}
+
+// fix：受控修复（ADR-009）——默认只读不变；仅显式调用并确认后才执行白名单处置
+static int cmd_fix(int argc, char** argv) {
+    std::string dir, fid;
+    bool yes = false, dry = false, all = false;
+    for (int i = 2; i < argc; ++i) {
+        if (!std::strcmp(argv[i], "--session") && i + 1 < argc) dir = argv[++i];
+        else if (!std::strcmp(argv[i], "--finding") && i + 1 < argc) fid = argv[++i];
+        else if (!std::strcmp(argv[i], "--yes")) yes = true;
+        else if (!std::strcmp(argv[i], "--dry-run")) dry = true;
+        else if (!std::strcmp(argv[i], "--all")) all = true;
+    }
+    if (dir.empty() || (fid.empty() && !all)) {
+        std::fprintf(stderr,
+            "[ctfir] fix 需要 --session <目录> 与 --finding <规则ID> 或 --all\n"
+            "  --dry-run  只打印处置计划不执行\n"
+            "  --yes      跳过逐条确认（批量）\n"
+            "说明: 修复仅覆盖白名单操作（账户/任务/服务/注册表值/hosts 行/进程/隔离），"
+            "每步先备份到会话 fix-backup/ 并写 fix-journal.jsonl。\n");
+        return 3;
+    }
+    ScanSession s; std::vector<Finding> fds; std::vector<Evidence> evs; std::string err;
+    if (!load_session_dir(dir, s, fds, evs, err)) {
+        std::fprintf(stderr, "[ctfir] %s\n", err.c_str());
+        return 3;
+    }
+    FixContext fx;
+    fx.session_dir = dir;
+    fx.backup_dir = dir + "/fix-backup";
+    fx.dry_run = dry;
+    fx.assume_yes = yes;
+    std::error_code ec;
+    fs::create_directories(fs::u8path(fx.backup_dir), ec);
+    int offered = 0;
+    for (const auto& f : fds) {
+        if (!all && !(f.rule_id == fid || starts_with(f.rule_id, fid))) continue;
+        ++offered;
+        RemediationPlan plan = plan_remediation(f);
+        run_remediation(f, plan, fx);
+    }
+    if (!offered) {
+        std::fprintf(stderr, "[ctfir] 未匹配到可处置的发现（%s）\n", all ? "会话无发现" : fid.c_str());
+        return 3;
+    }
+    std::printf("[ctfir] 修复完成: 执行 %d / 跳过 %d / 不支持 %d——请重扫验证（diff 前后会话）\n",
+                fx.executed, fx.skipped, fx.unsupported);
+    return 0;
 }
 
 // diff：两次扫描对比（处置前后复查）
@@ -367,6 +420,7 @@ int main(int argc, char** argv) {
                          extra_dirs.size(), baseline.empty() ? "无" : baseline.c_str());
         return cmd_scan(out_dir, extra_dirs, baseline, profile);
     }
+    if (cmd == "fix") return cmd_fix(argc, argv);
     if (cmd == "help") return cmd_help();
     if (cmd == "playbook") return cmd_playbook(argc, argv);
     if (cmd == "diff") return cmd_diff(argc, argv);

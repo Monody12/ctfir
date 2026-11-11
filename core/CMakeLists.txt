@@ -6,6 +6,8 @@ add_library(ctfir_core STATIC
   evidence.cpp
   report.cpp
   advice.cpp
+  remediate.cpp
+  fixengine.cpp
 )
 # 平台层编入同一静态库（仅本平台源码）
 if(WIN32)
