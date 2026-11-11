@@ -15,6 +15,7 @@ if(WIN32)
     ../platform/win/mod_w.cpp
     ../platform/win/mod_w2.cpp
     ../platform/win/mod_w3.cpp
+    ../platform/win/mod_w4.cpp
   )
 else()
   target_sources(ctfir_core PRIVATE
@@ -24,6 +25,8 @@ else()
     ../platform/linux/mod_b.cpp
     ../platform/linux/mod_c.cpp
     ../platform/linux/mod_d.cpp
+    ../platform/linux/mod_e.cpp
+    ../platform/linux/mod_f.cpp
   )
 endif()
 if(MSVC)
