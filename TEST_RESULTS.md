@@ -285,3 +285,13 @@ elease\）**：
 - 基线策略类（密码长度等）如实标"不在白名单"——改安全策略≠删后门对象
 
 **测试台终态**：单测 22/22×2 | centos-ir-lab 23/23 | Linux 夹具 24/24 | A7C9 七项构造→识别→修复→还原全通过
+
+## 2026-11-12 v0.5-R5（#26：最终遗漏补齐——服务DLL劫持/hosts.allow/SSH wrapper）
+
+**本轮新检测（3 项）**：
+- WIN.BASE.SVCDLL.001 — svchost 组服务 ServiceDll 指向可写目录（DLL 劫持/后门）
+- LNX.BASE.HOSTSALLOW.001 — /etc/hosts.allow spawn/ALLOW 后门规则
+- LNX sshd 二进制哈希留证（wrapper 后门需可信同版本比对）
+
+**四测台终态**：单测 22/22×2 | centos-ir-lab 回归通过 | Win7 真机 25 findings（8 基线）| A7C9 8/8
+**发布**：v0.4 包含全部功能（fix 引擎 + 基线 + 中间件 + 痕迹 + 55+ 规则）
