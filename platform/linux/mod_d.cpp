@@ -20,8 +20,14 @@ static bool webshell_hit(const std::string& c, bool& strong) {
                      contains_ci(c, "request.getParameter");
     bool decode = contains_ci(c, "base64_decode") || contains_ci(c, "gzinflate") ||
                   contains_ci(c, "str_rot13");
+    // 深化特征（免杀变形）
+    bool var_var = c.find("$$") != std::string::npos;                   // 可变变量 $$x
+    bool preg_e = contains_ci(c, "preg_replace") && contains_ci(c, "/e"); // /e 修饰符
+    bool callfunc = contains_ci(c, "call_user_func") || contains_ci(c, "create_function");
+    bool b64_file = contains_ci(c, "file_put_contents") && contains_ci(c, "base64");
     strong = exec_call && (req_input || decode);
-    return exec_call && (req_input || decode || contains_ci(c, "password"));
+    return strong || (var_var && exec_call) || (preg_e && exec_call) ||
+           (callfunc && exec_call && req_input) || (b64_file && exec_call);
 }
 
 static void scan_web_dir(ModuleCtx& ctx, const std::string& dir, int depth, int& files, int& hits) {
@@ -262,6 +268,51 @@ void mod_ldso(ModuleCtx& ctx) {
             f.advice_id = "ADVICE.PRELOAD.REVIEW.001";
             ctx.add_finding(f);
         });
+    }
+    // .htaccess / .user.ini 后门检查
+    for (const char* root : {"/var/www/html", "/var/www", "/usr/share/nginx/html"}) {
+        for (const char* fn : {".htaccess", ".user.ini"}) {
+            std::string p = std::string(root) + "/" + fn;
+            ReadResult r = read_text_file(p, 64 * 1024);
+            if (!r.ok) continue;
+            for_each_line(r.content, [&](int no, const std::string& l) {
+                std::string t = trim(l);
+                if (t.empty() || t[0] == '#') return;
+                if (contains_ci(t, "auto_prepend_file") || contains_ci(t, "auto_append_file") ||
+                    contains_ci(t, "AddType application/x-httpd-php") ||
+                    contains_ci(t, "php_value auto_prepend_file")) {
+                    Finding f;
+                    f.rule_id = "LNX.WEB.CONFIGBACKDOOR.001";
+                    f.severity = "high";
+                    f.confidence = "medium";
+                    f.rationale = fn + std::string(" 后门（auto_prepend/类型劫持）: ") + t.substr(0, 150);
+                    f.object_ref = p + ":" + std::to_string(no);
+                    f.advice_id = "ADVICE.WEBSHELL.REVIEW.001";
+                    ctx.add_finding(f);
+                }
+            });
+        }
+    }
+    // btmp 暴力破解计数
+    {
+        FILE* bf = fopen("/var/log/btmp", "rb");
+        if (bf) {
+            fseek(bf, 0, SEEK_END);
+            long sz = ftell(bf);
+            fclose(bf);
+            int entries = static_cast<int>(sz / 384); // utmp 384B 结构
+            if (entries > 100) {
+                Finding f;
+                f.rule_id = "LNX.LOG.BTMP.001";
+                f.severity = "medium";
+                f.confidence = "medium";
+                f.rationale = "btmp 登录失败记录 " + std::to_string(entries) +
+                              " 条（大量爆破痕迹；用 lastb 命令查看详情）";
+                f.object_ref = "/var/log/btmp";
+                f.advice_id = "ADVICE.EVENTLOG.REVIEW.001";
+                ctx.add_finding(f);
+            }
+        }
     }
     ctx.set_status(ModuleStatus::PASS);
 }
