@@ -203,6 +203,46 @@ void mod_nfs(ModuleCtx& ctx) {
     ctx.set_status(ModuleStatus::PASS);
 }
 
+// ---- hosts.allow / hosts.deny 后门 ----
+void mod_hostsdeny(ModuleCtx& ctx) {
+    for (const char* pf : {"/etc/hosts.allow", "/etc/hosts.deny"}) {
+        ReadResult r = read_source(ctx, pf, false);
+        if (!r.ok) continue;
+        for_each_line(r.content, [&](int no, const std::string& line) {
+            std::string t = trim(line);
+            if (t.empty() || t[0] == '#') return;
+            if (contains_ci(t, "spawn") || contains_ci(t, "ALL:") && contains_ci(t, "ALLOW")) {
+                Finding f;
+                f.rule_id = "LNX.BASE.HOSTSALLOW.001";
+                f.severity = "medium";
+                f.confidence = "medium";
+                f.rationale = std::string(pf) + " 第 " + std::to_string(no) +
+                              " 行含 spawn/ALLOW 规则——可能是后门触发器: " + t.substr(0, 150);
+                f.object_ref = std::string(pf) + ":" + std::to_string(no);
+                f.advice_id = "ADVICE.HARDEN.001";
+                ctx.add_finding(f);
+            }
+        });
+    }
+    // sshd 二进制留证（wrapper 后门检测依赖哈希比对）
+    for (const char* ss : {"/usr/sbin/sshd", "/usr/local/sbin/sshd"}) {
+        if (!file_exists(ss)) continue;
+        ReadResult r = read_text_file(ss, 32 * 1024 * 1024);
+        if (r.ok) {
+            Evidence e;
+            e.source_kind = "file";
+            e.source_path = ss;
+            e.sha256 = r.raw_sha256;
+            e.payload = "(sshd 二进制哈希留证) size=" + std::to_string(r.raw_size);
+            ctx.add_evidence(e);
+            ctx.checked_source("sshd 哈希留证");
+            ctx.note("sshd wrapper 后门需与可信同版本哈希比对（无内置基线）");
+        }
+        break;
+    }
+    ctx.set_status(ModuleStatus::PASS);
+}
+
 } // namespace
 
 void register_mods_g(std::vector<Session::ModuleDef>& mods) {
@@ -210,6 +250,7 @@ void register_mods_g(std::vector<Session::ModuleDef>& mods) {
     mods.push_back({"LNX.BASE.ROOTPATH", "1.0.0", "linux", [](ModuleCtx& c) { mod_rootpath(c); }});
     mods.push_back({"LNX.BASE.GRUB", "1.0.0", "linux", [](ModuleCtx& c) { mod_grubctrl(c); }});
     mods.push_back({"LNX.BASE.NFS", "1.0.0", "linux", [](ModuleCtx& c) { mod_nfs(c); }});
+    mods.push_back({"LNX.BASE.HOSTSALLOW", "1.0.0", "linux", [](ModuleCtx& c) { mod_hostsdeny(c); }});
 }
 
 } // namespace ctfir::lnx

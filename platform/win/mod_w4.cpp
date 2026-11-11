@@ -427,6 +427,63 @@ void mod_base_persist(ModuleCtx& ctx) {
             }
         }
     }
+    // 6) 服务 DLL 劫持（svchost 组服务的 ServiceDll 指向可写路径）
+    {
+        HKEY h = open_key(HKEY_LOCAL_MACHINE,
+                          L"SYSTEM\CurrentControlSet\Control\ServiceProvider\ServiceTypes", false);
+        if (h) RegCloseKey(h); // 探测
+        // 遍历所有服务，找 svchost 调用的 ServiceDll
+        SC_HANDLE scm = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_ENUMERATE_SERVICE);
+        if (scm) {
+            DWORD need = 0, count = 0, resume = 0;
+            EnumServicesStatusExW(scm, SC_ENUM_PROCESS_INFO, SERVICE_WIN32_SHARE_PROCESS,
+                                  SERVICE_STATE_ALL, nullptr, 0, &need, &count, &resume, nullptr);
+            std::vector<BYTE> sbuf(need);
+            if (EnumServicesStatusExW(scm, SC_ENUM_PROCESS_INFO, SERVICE_WIN32_SHARE_PROCESS,
+                                      SERVICE_STATE_ALL, sbuf.data(), need, &need, &count, &resume, nullptr)) {
+                auto* svc = reinterpret_cast<ENUM_SERVICE_STATUS_PROCESS*>(sbuf.data());
+                int dll_checked = 0, dll_flagged = 0;
+                for (DWORD i = 0; i < count && dll_checked < 100; ++i) {
+                    if (ctx.expired()) break;
+                    SC_HANDLE hsvc = OpenServiceW(scm, svc[i].lpServiceName, SERVICE_QUERY_CONFIG);
+                    if (!hsvc) continue;
+                    DWORD qn = 0;
+                    QueryServiceConfigW(hsvc, nullptr, 0, &qn);
+                    if (qn > 0 && qn < 1024 * 1024) {
+                        std::vector<BYTE> qb(qn);
+                        if (QueryServiceConfigW(hsvc, reinterpret_cast<QUERY_SERVICE_CONFIGW*>(qb.data()), qn, &qn)) {
+                            auto* qc = reinterpret_cast<QUERY_SERVICE_CONFIGW*>(qb.data());
+                            // svchost 共享进程的服务 → 查 ServiceDll
+                            if (qc->lpBinaryPathName && contains_ci(wide_to_utf8(qc->lpBinaryPathName), "svchost")) {
+                                std::string dllpath;
+                                std::wstring param_key = std::wstring(L"SYSTEM\CurrentControlSet\Services\\") +
+                                                         svc[i].lpServiceName + L"\Parameters";
+                                reg_get(HKEY_LOCAL_MACHINE, param_key, L"ServiceDll", false, dllpath);
+                                if (!dllpath.empty()) {
+                                    ++dll_checked;
+                                    if (is_writable_path(dllpath) && dll_flagged < 10) {
+                                        ++dll_flagged;
+                                        Finding f;
+                                        f.rule_id = "WIN.BASE.SVCDLL.001";
+                                        f.severity = "medium";
+                                        f.confidence = "medium";
+                                        f.rationale = "svchost 服务 ServiceDll 指向可写目录（DLL 劫持/后门）: " +
+                                                      wide_to_utf8(svc[i].lpServiceName) + " → " + dllpath.substr(0, 150);
+                                        f.object_ref = "ServiceDll\\" + wide_to_utf8(svc[i].lpServiceName);
+                                        f.advice_id = "ADVICE.SVC.REVIEW.001";
+                                        ctx.add_finding(f);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    CloseServiceHandle(hsvc);
+                }
+                ctx.checked_source("svchost ServiceDll 劫持（" + std::to_string(dll_checked) + " 项）");
+            }
+            CloseServiceHandle(scm);
+        }
+    }
     ctx.set_status(ModuleStatus::PASS);
 }
 
