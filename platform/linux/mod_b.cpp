@@ -229,6 +229,7 @@ void mod_suid(ModuleCtx& ctx) {
             ctx.add_evidence(e);
             if (suid && !allow.count(name)) {
                 Finding f;
+                f.object_ref = p;
                 f.rule_id = "LNX.SUID.UNEXPECTED.001";
                 f.severity = "medium";
                 f.confidence = "medium";
