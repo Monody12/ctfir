@@ -38,6 +38,14 @@ ln -sf /dev/null /etc/systemd/system/multi-user.target.wants/ctfir-marker-telnet
 printf 'bind 0.0.0.0\nprotected-mode no\n' > /etc/redis/redis.conf
 printf '[mysqld]\nlocal-infile=1\n' > /etc/my.cnf
 echo "allow_url_include=On" > /tmp/ctfir-php.ini
+# --- R10: 命令替换 / SSH端口 / 最近文件 / 进程名伪装 ---
+cp -f /usr/bin/ls /usr/bin/ls.ctfir-bak 2>/dev/null
+printf '#!/bin/sh\necho ctfir-marker\n' > /usr/bin/ls && chmod 755 /usr/bin/ls
+mkdir -p /etc/ssh
+grep -q '^Port ' /etc/ssh/sshd_config 2>/dev/null || echo "Port 2222" >> /etc/ssh/sshd_config 2>/dev/null || printf 'Port 2222\n' > /etc/ssh/sshd_config
+printf '#!/bin/sh\n' > /root/ctfir-marker-recent.sh && chmod 755 /root/ctfir-marker-recent.sh
+cp -f /bin/sleep /tmp/ctfir-mismatch
+bash -c 'exec -a kworkerd /tmp/ctfir-mismatch 600' >/dev/null 2>&1 &
 echo INSTALL_DONE
 FIXEOF
 
@@ -54,7 +62,16 @@ if [ -f /tmp/ctfir-root-hash.bak ]; then
 fi
 rm -f /etc/cron.d/ctfir-marker /etc/profile.d/ctfir-marker.sh /etc/systemd/system/ctfir-marker.timer \
       /var/spool/at/ctfir-marker /var/www/html/ctfir-marker.php /var/www/html/ctfir-marker-phpinfo.php \
-      /usr/bin/ctfir-marker-cap /etc/redis/redis.conf /etc/my.cnf /tmp/ctfir-php.ini
+      /usr/bin/ctfir-marker-cap /etc/redis/redis.conf /etc/my.cnf /tmp/ctfir-php.ini \
+      /root/ctfir-marker-recent.sh /tmp/ctfir-mismatch
+[ -f /usr/bin/ls.ctfir-bak ] && mv -f /usr/bin/ls.ctfir-bak /usr/bin/ls
+# argv[0] 伪装使 pgrep -f 失效，改用 exe 符号链接定位（检测同款思路）
+for pd in /proc/[0-9]*; do
+  [ "$(readlink "$pd/exe" 2>/dev/null | cut -d' ' -f1)" = "/tmp/ctfir-mismatch" ] && kill -9 "${pd##*/}" 2>/dev/null
+done
+sed -i '/^Port 2222$/d' /etc/ssh/sshd_config 2>/dev/null || true
+# 若 sshd_config 是夹具新建的且只剩空壳则删除
+[ -f /etc/ssh/sshd_config ] && [ ! -s /etc/ssh/sshd_config ] && rm -f /etc/ssh/sshd_config
 rmdir /etc/redis 2>/dev/null
 rm -f /etc/systemd/system/multi-user.target.wants/ctfir-marker-telnet.service
 chmod og-rwx /etc/shadow 2>/dev/null
@@ -109,6 +126,11 @@ a "MID.REDIS.NOPASS.001"        "Redis 未授权命中"       "Redis 漏检"
 a "MID.REDIS.PROTMODE.001"      "Redis protected-mode 命中" "Redis PM 漏检"
 a "MID.MYSQL.LOCALINFILE.001"   "MySQL local-infile 命中" "MySQL 漏检"
 a "MID.PHP.PHPINFO.001"         "phpinfo 文件命中"       "phpinfo 漏检"
+echo "--- v0.5-R10 命令替换/端口/近期文件/进程伪装 ---"
+a "LNX.BASE.CMDSIZE.001"        "ls 替换命中（大小异常）" "命令替换漏检"
+a "LNX.SSH.PORT.001"            "SSH 2222 端口命中"      "SSH 端口漏检"
+a "LNX.BASE.RECENT.001"         "近期可执行文件命中"     "近期文件漏检"
+a "LNX.PROC.NAMEMISMATCH.001"   "进程名伪装命中"         "进程名伪装漏检"
 echo "$RES" | grep -q "ADVICE"  && ok "建议挂接" || bad "建议缺失"
 
 echo "=== 阶段4：清理并复验 ==="

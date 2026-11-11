@@ -295,3 +295,20 @@ elease\）**：
 
 **四测台终态**：单测 22/22×2 | centos-ir-lab 回归通过 | Win7 真机 25 findings（8 基线）| A7C9 8/8
 **发布**：v0.4 包含全部功能（fix 引擎 + 基线 + 中间件 + 痕迹 + 55+ 规则）
+
+## 2026-11-12 v0.5-R10（#31：联网调研补漏——命令替换/SSH端口/近期文件/进程伪装）
+
+**本轮新检测（4 项，来源：sklinux CTF排错 / 玄机靶场 WP 高频题型）**：
+- LNX.BASE.CMDSIZE.001 — 系统命令大小阈值异常（假 ls/ps 替换；18 命令清单，偏小=脚本替换，偏大=加壳捆绑）+ CMDRECENT 变体（7 天内 mtime 线索）
+- LNX.SSH.PORT.001 — sshd_config Port 提取（非 22 报 low；后门 SSH 常跑非标端口）
+- LNX.BASE.RECENT.001 — /etc、/usr/local/{bin,sbin}、/root、各用户 .ssh 下 7 天内可执行/脚本/配置文件（新投毒线索）
+- LNX.PROC.NAMEMISMATCH.001 — /proc/PID/cmdline argv[0] 与 /proc/PID/exe 基名不匹配（exec -a 伪装进程名；解释器/busybox 白名单）
+
+**centos-ir-lab 实证循环（27/27 全绿）**：
+- 夹具：脚本替换 /usr/bin/ls（117608B→30B）→ CMDSIZE 命中 ✓；sshd_config Port 2222 → SSH.PORT 命中 ✓；/root 7 天内 .sh → RECENT 命中 ✓；`exec -a kworkerd /tmp/ctfir-mismatch` → NAMEMISMATCH 命中 ✓
+- 清理复验通过；ls 从备份还原验证（LS_OK）；夹具进程清理改用 exe readlink 定位——pgrep -f 对 argv[0] 伪装进程天然失效（该缺陷本身即该考点的检测价值证明）
+
+**过程修复**：R8/R9 补丁脚本对 mod_e.cpp（/etc/environment）与 mod_a.cpp（ProxyCommand）各重复插入一段——去重后构建恢复绿。教训：补丁脚本须先 grep 防重复执行。
+
+**版本**：kToolVersion 0.4.0 → 0.5.0；DETECTION-POINTS 100 → 104 项
+**测试台终态**：单测 18/18 | Linux 夹具 24/24 | centos-ir-lab 27/27

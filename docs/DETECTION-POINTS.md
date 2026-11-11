@@ -88,5 +88,9 @@
 | 88 | web access POST Top IP | [CTF] | LNX.WEB.LOGPOST.001 | httpd 日志样本 | 无 |
 | 89 | nginx/apache root 定位 | [CTF] | （WEB 证据） | conf root 指令 | — |
 | 90–100 | 变体矩阵：CRLF/GBK/UTF-16 hosts、passwd 字段缺列、crontab 环境行、spool 权限拒绝、hidepid、xfs/ext4、超大 history、软链 /etc、cron.d 大小写、at 队列 old 格式 | 本表 | 各规则 | 变体用例 | cases_linux.tsv |
+| 101 | 系统命令被替换（假 ls/ps） | [CTF][A=T1036] | LNX.BASE.CMDSIZE.001 | 脚本替换 /usr/bin/ls | 大小阈值为统计值，需 rpm -Va 复核 |
+| 102 | SSH 非默认端口 | [CTF] | LNX.SSH.PORT.001 | sshd_config Port 2222 | 22 静默不报 |
+| 103 | 近期新增/修改可执行文件 | [CTF] | LNX.BASE.RECENT.001 | /root 7 天内 .sh | mtime 线索级 low |
+| 104 | 进程名与 exe 伪装 | [CTF][A=T1036] | LNX.PROC.NAMEMISMATCH.001 | exec -a kworkerd 假进程 | 解释器/busybox 白名单 |
 
-合计 100 检测点 ↔ 用例库目标 100+ 行。新检测点必须：先入本表（含正负例设计）→ 实现 → 用例行 → 断言通过。
+合计 104 检测点（100 + R10 增补 4）↔ 用例库目标 100+ 行。新检测点必须：先入本表（含正负例设计）→ 实现 → 用例行 → 断言通过。
