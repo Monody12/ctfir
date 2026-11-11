@@ -9,6 +9,7 @@ void register_mods_d(std::vector<Session::ModuleDef>& mods);
 void register_mods_e(std::vector<Session::ModuleDef>& mods);
 void register_mods_f(std::vector<Session::ModuleDef>& mods);
 void register_mods_g(std::vector<Session::ModuleDef>& mods);
+void register_mods_h(std::vector<Session::ModuleDef>& mods);
 } // namespace ctfir::lnx
 
 namespace ctfir {
@@ -22,6 +23,7 @@ std::vector<Session::ModuleDef> build_platform_modules() {
     ctfir::lnx::register_mods_e(mods);
     ctfir::lnx::register_mods_f(mods);
     ctfir::lnx::register_mods_g(mods);
+    ctfir::lnx::register_mods_h(mods);
     return mods;
 }
 

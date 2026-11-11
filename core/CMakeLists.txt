@@ -30,6 +30,7 @@ else()
     ../platform/linux/mod_e.cpp
     ../platform/linux/mod_f.cpp
     ../platform/linux/mod_g.cpp
+    ../platform/linux/mod_h.cpp
   )
 endif()
 if(MSVC)

@@ -184,6 +184,48 @@ RemediationPlan plan_remediation(const Finding& f) {
         p.rollback_note = "chmod u+s 恢复；仅去掉 SUID 位不删文件";
         return p;
     }
+    // ---------- Linux 进程从临时目录运行（终止进程） ----------
+    if (rid == "LNX.PROC.TMPDIR.001") {
+        std::string pid = after(obj, "PID ");
+        if (pid.empty()) { p.reason = "PID 已失效——请重扫后处置"; return p; }
+        p.supported = true;
+        p.steps.push_back("kill -9 " + pid);
+        p.rollback_note = "进程终止不可逆——先取证 exe 路径和哈希";
+        return p;
+    }
+    // ---------- Linux XDG autostart ----------
+    if (rid == "LNX.PERSIST.XDG.001") {
+        if (obj.empty()) { p.reason = "无法解析文件"; return p; }
+        p.supported = true;
+        p.native_ops.push_back("quarantine:" + obj.substr(0, obj.rfind(":")));
+        p.rollback_note = "从 fix-backup/ 移回即恢复";
+        return p;
+    }
+    // ---------- Linux Python startup hook ----------
+    if (rid == "LNX.PERSIST.PYHOOK.001") {
+        if (obj.empty()) { p.reason = "无法解析文件"; return p; }
+        p.supported = true;
+        p.native_ops.push_back("quarantine:" + obj);
+        p.rollback_note = "从 fix-backup/ 移回即恢复";
+        return p;
+    }
+    // ---------- Linux bashrc 函数后门 ----------
+    if (rid == "LNX.PERSIST.BASHFUNC.001") {
+        std::string file = obj.substr(0, obj.rfind(':'));
+        if (file.empty()) { p.reason = "无法解析文件"; return p; }
+        p.supported = true;
+        p.native_ops.push_back("linux_comment_line:" + obj);
+        p.rollback_note = "去掉 # ctfir-fixed: 前缀即恢复";
+        return p;
+    }
+    // ---------- Linux Udev rule ----------
+    if (rid == "LNX.PERSIST.UDEV.001") {
+        if (obj.empty()) { p.reason = "无法解析文件"; return p; }
+        p.supported = true;
+        p.native_ops.push_back("quarantine:" + obj.substr(0, obj.rfind(":")));
+        p.rollback_note = "从 fix-backup/ 移回即恢复";
+        return p;
+    }
     // ---------- webshell / 可疑文件隔离（双平台） ----------
     if (rid == "LNX.WEB.SHELL.001" || rid == "WIN.WEB.WEBSHELL.001" ||
         rid == "WIN.FILES.DOUBLEEXT.001" || rid == "MID.WEB.BACKUP.001" ||
