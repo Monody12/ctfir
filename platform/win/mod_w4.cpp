@@ -310,7 +310,7 @@ void mod_base_persist(ModuleCtx& ctx) {
         std::string sub;
         bool found = false;
         // 命名空间枚举（只读两个最常用路径）
-        for (const wchar_t* ns : {L"ROOT\Subscription", L"ROOT\CIMV2"}) {
+        for (const wchar_t* ns : {L"ROOT\\Subscription", L"ROOT\\CIMV2"}) {
             HKEY h = nullptr;
             // WMI 对象不存注册表；用 process 检查 eventconsumer 进程痕迹
             // 实际持久化通过 WMI repo 文件（objects.data）→ 只能通过 COM 枚举
@@ -319,8 +319,8 @@ void mod_base_persist(ModuleCtx& ctx) {
         // 注册表方式的 WMI 持久化（通过 __FilterToConsumerBinding 的活动脚本）
         // 用 WMI COM 查询（已在 PROCCMD 有 COM 基础）
         // 简化：检查常见持久化路径
-        for (const char* script : {"C:\Windows\System32\wbem\mof\\",
-                                    "C:\Windows\Temp\*.mof"}) {
+        for (const char* script : {"C:\\Windows\\System32\\wbem\\mof\\",
+                                    "C:\\Windows\\Temp\\"}) {
             WIN32_FIND_DATAA fd;
             HANDLE fh = FindFirstFileA((std::string(script) + "*").c_str(), &fd);
             if (fh != INVALID_HANDLE_VALUE) {
@@ -362,7 +362,7 @@ void mod_base_persist(ModuleCtx& ctx) {
 
     // 3) COM 劫持（HKCU CLSID InprocServer32 指向不存在/可疑 DLL）
     {
-        const std::wstring base = L"Software\Classes\CLSID";
+        const std::wstring base = L"Software\\Classes\\CLSID";
         HKEY hkcu = open_key(HKEY_CURRENT_USER, base, false);
         if (hkcu) {
             int checked = 0, hijacked = 0;
@@ -370,7 +370,7 @@ void mod_base_persist(ModuleCtx& ctx) {
                 if (++checked > 500) break;
                 if (ctx.expired()) break;
                 std::string dll;
-                if (reg_get(HKEY_CURRENT_USER, base + L"\\" + clsid + L"\InprocServer32",
+                if (reg_get(HKEY_CURRENT_USER, base + L"\\" + clsid + L"\\InprocServer32",
                             L"", false, dll)) {
                     if (dll.empty() || !file_exists(dll)) continue;
                     if (is_writable_path(dll)) {
@@ -397,14 +397,14 @@ void mod_base_persist(ModuleCtx& ctx) {
     // 4) 屏幕保护后门（SCR 替换）
     {
         std::string scr;
-        reg_get(HKEY_CURRENT_USER, L"Control Panel\Desktop", L"SCRNSAVE.EXE", false, scr);
+        reg_get(HKEY_CURRENT_USER, L"Control Panel\\Desktop", L"SCRNSAVE.EXE", false, scr);
         if (!scr.empty() && !is_expected_path(scr) && is_writable_path(scr)) {
             Finding f;
             f.rule_id = "WIN.BASE.SCRNSAVE.001";
             f.severity = "medium";
             f.confidence = "medium";
             f.rationale = "屏幕保护程序指向可写目录: " + scr.substr(0, 150) + "——SCR 后门";
-            f.object_ref = "HKCU\Control Panel\Desktop\SCRNSAVE.EXE";
+            f.object_ref = "HKCU\\Control Panel\\Desktop\\SCRNSAVE.EXE";
             f.advice_id = "ADVICE.AUTORUN.REVIEW.001";
             ctx.add_finding(f);
         }
@@ -412,7 +412,7 @@ void mod_base_persist(ModuleCtx& ctx) {
 
     // 5) SSH wrapper 后门（sshd 二进制哈希 vs 正常大小）
     {
-        std::string sshd = sysroot() + "\System32\OpenSSH\sshd.exe";
+        std::string sshd = sysroot() + "\\System32\\OpenSSH\\sshd.exe";
         if (file_exists(sshd)) {
             ctx.planned_source(sshd);
             ReadResult r = read_text_file(sshd, 32 * 1024 * 1024);
@@ -430,7 +430,7 @@ void mod_base_persist(ModuleCtx& ctx) {
     // 6) 服务 DLL 劫持（svchost 组服务的 ServiceDll 指向可写路径）
     {
         HKEY h = open_key(HKEY_LOCAL_MACHINE,
-                          L"SYSTEM\CurrentControlSet\Control\ServiceProvider\ServiceTypes", false);
+                          L"SYSTEM\\CurrentControlSet\\Control\\ServiceProvider\\ServiceTypes", false);
         if (h) RegCloseKey(h); // 探测
         // 遍历所有服务，找 svchost 调用的 ServiceDll
         SC_HANDLE scm = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_ENUMERATE_SERVICE);
@@ -456,8 +456,8 @@ void mod_base_persist(ModuleCtx& ctx) {
                             // svchost 共享进程的服务 → 查 ServiceDll
                             if (qc->lpBinaryPathName && contains_ci(wide_to_utf8(qc->lpBinaryPathName), "svchost")) {
                                 std::string dllpath;
-                                std::wstring param_key = std::wstring(L"SYSTEM\CurrentControlSet\Services\\") +
-                                                         svc[i].lpServiceName + L"\Parameters";
+                                std::wstring param_key = std::wstring(L"SYSTEM\\CurrentControlSet\\Services\\") +
+                                                         svc[i].lpServiceName + L"\\Parameters";
                                 reg_get(HKEY_LOCAL_MACHINE, param_key, L"ServiceDll", false, dllpath);
                                 if (!dllpath.empty()) {
                                     ++dll_checked;
@@ -483,6 +483,43 @@ void mod_base_persist(ModuleCtx& ctx) {
             }
             CloseServiceHandle(scm);
         }
+    }
+    // 6b) Netsh portproxy 端口转发后门（T1090；netsh interface portproxy 持久化在注册表）
+    {
+        struct PpPath { const wchar_t* reg; const char* label; };
+        static const PpPath proto_paths[] = {
+            {L"SYSTEM\\CurrentControlSet\\Services\\PortProxy\\v4tov4", "v4tov4"},
+            {L"SYSTEM\\CurrentControlSet\\Services\\PortProxy\\v4tov6", "v4tov6"},
+            {L"SYSTEM\\CurrentControlSet\\Services\\PortProxy\\v6tov4", "v6tov4"},
+            {L"SYSTEM\\CurrentControlSet\\Services\\PortProxy\\v6tov6", "v6tov6"},
+        };
+        int pp_total = 0;
+        for (const auto& e : proto_paths) {
+            for (const wchar_t* proto : {L"tcp", L"udp"}) {
+                std::wstring full = std::wstring(e.reg) + L"\\" + proto;
+                HKEY h = open_key(HKEY_LOCAL_MACHINE, full, false);
+                if (!h) continue;
+                auto vals = reg_values(h);
+                RegCloseKey(h);
+                for (const auto& v : vals) {
+                    ++pp_total;
+                    if (pp_total <= 10) {
+                        Finding f;
+                        f.rule_id = "WIN.PORTPROXY.001";
+                        f.severity = "medium";
+                        f.confidence = "high";
+                        f.rationale = "netsh portproxy 端口转发规则: " + v.name +
+                                      " → " + v.data + "（可作内网穿透/流量中继后门）";
+                        f.object_ref = std::string("PortProxy\\") + e.label + "\\" +
+                                       wide_to_utf8(proto) + "\\" + v.name;
+                        f.advice_id = "ADVICE.SVC.REVIEW.001";
+                        ctx.add_finding(f);
+                    }
+                }
+            }
+        }
+        if (pp_total == 0) ctx.checked_source("PortProxy 转发规则 [clean]");
+        else ctx.checked_source("PortProxy 转发规则（" + std::to_string(pp_total) + " 条）");
     }
     // 7) Netsh Helper DLL (T1546.007)
     {

@@ -312,3 +312,17 @@ elease\）**：
 
 **版本**：kToolVersion 0.4.0 → 0.5.0；DETECTION-POINTS 100 → 104 项
 **测试台终态**：单测 18/18 | Linux 夹具 24/24 | centos-ir-lab 27/27
+
+## 2026-11-12 v0.5-R11（#32：反斜杠根因二次清理 + portproxy 端口转发后门）
+
+**关键缺陷修复（9 处静默漏检根因）**：
+- scripts/scan_bad_escapes.py 新工具：逐字符扫描字符串字面量，单反斜杠+大写字母=Python heredoc 吞噬痕迹（\ 成对跳过避免误报）
+- mod_w4.cpp 修复：COM 劫持键路径（Software\Classes\CLSID→损坏版永不打开键）、InprocServer32 子键、SCRNSAVE 键、sshd.exe 路径、ServiceProvider\ServiceTypes、驱动服务 Parameters 键、MOF 扫描路径、WMI 命名空间、object_ref 2 处——此前 COM 劫持/SCR/sshd 哈希/服务DLL 前置探测全部静默失效
+- 判定：这些模块在真机上"从未真正执行过"，负例干净是因为路径错误打开失败，不是检测通过
+
+**新检测（1 项，DETECTION-POINTS #105）**：
+- WIN.PORTPROXY.001 — netsh portproxy 端口转发规则（注册表 PortProxy\v{4,6}to{4,6}\{tcp,udp} 四族枚举；T1090 内网穿透/流量中继）
+- 修复引擎：reg delete 值级删除 + netsh show all 备份 + add 命令回滚说明
+
+**Win7 真机端到端**：netsh add v4tov4 13389→10.99.99.99:3389 → 扫描命中（PortProxy\v4tov4\tcp\*/13389）→ fix --finding --yes → netsh show all 空 + reg query 空 ✓
+**测试台终态**：单测 18/18（Linux）| Linux 夹具 24/24 | centos-ir-lab 27/27 | Win7 真机 31 findings（portproxy 新增）

@@ -68,6 +68,31 @@ RemediationPlan plan_remediation(const Finding& f) {
         p.rollback_note = "按备份的值数据 reg add 恢复；引用文件取证后另行隔离";
         return p;
     }
+    // ---------- netsh portproxy 转发规则 ----------
+    if (rid == "WIN.PORTPROXY.001") {
+        // object_ref = "PortProxy\<v4tov4...>\<tcp|udp>\<value_name>"
+        std::vector<std::string> parts;
+        size_t cur = 0;
+        while (cur <= obj.size()) {
+            size_t nx = obj.find('\\', cur);
+            if (nx == std::string::npos) { parts.push_back(obj.substr(cur)); break; }
+            parts.push_back(obj.substr(cur, nx - cur));
+            cur = nx + 1;
+        }
+        // parts: [PortProxy, proto, tcp/udp, value_name]
+        if (parts.size() < 4 || parts[0] != "PortProxy") {
+            p.reason = "无法解析 portproxy 规则标识";
+            return p;
+        }
+        std::string key = "HKLM\\SYSTEM\\CurrentControlSet\\Services\\PortProxy\\" +
+                          parts[1] + "\\" + parts[2];
+        p.supported = true;
+        p.backups.push_back("netsh interface portproxy show all");
+        p.steps.push_back("reg delete \"" + key + "\" /v \"" + parts[3] + "\" /f");
+        p.rollback_note = "netsh interface portproxy add " + parts[1] + " " + parts[2] +
+                          " 原参数即可恢复；确认无业务依赖后删除";
+        return p;
+    }
     // ---------- 计划任务 ----------
     if (starts_with(rid, "WIN.TASK.")) {
         std::string path = after(obj, "Task"); // "Task<path>" → <path>
