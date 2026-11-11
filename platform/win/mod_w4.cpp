@@ -350,11 +350,11 @@ void mod_base_persist(ModuleCtx& ctx) {
     {
         // BITS 任务存储在注册表 + QMGR 数据库——检查注册表残留
         HKEY h = open_key(HKEY_LOCAL_MACHINE,
-                          L"SOFTWARE\Microsoft\Windows\CurrentVersion\BITS", false);
+                          L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\BITS", false);
         if (h) { RegCloseKey(h); }
         // 检查 bitsadmin 相关服务
         std::string bits_state;
-        reg_get(HKEY_LOCAL_MACHINE, L"SYSTEM\CurrentControlSet\Services\BITS",
+        reg_get(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Services\\BITS",
                 L"Start", false, bits_state);
         ctx.checked_source("BITS 服务状态");
         ctx.note("BITS 任务枚举需 bitsadmin /list 命令——建议人工执行");
@@ -484,6 +484,130 @@ void mod_base_persist(ModuleCtx& ctx) {
             CloseServiceHandle(scm);
         }
     }
+    // 7) Netsh Helper DLL (T1546.007)
+    {
+        std::string helpers;
+        reg_get(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\NetSh", L"", false, helpers);
+        // 枚举所有值
+        HKEY h = open_key(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\NetSh", false);
+        if (h) {
+            auto vals = reg_values(h);
+            RegCloseKey(h);
+            for (const auto& v : vals) {
+                if (v.data.empty()) continue;
+                // NetSh helper 默认只有系统自带的几个 DLL
+                if (is_writable_path(v.data)) {
+                    Finding f;
+                    f.rule_id = "WIN.BASE.NETSH.001";
+                    f.severity = "high";
+                    f.confidence = "medium";
+                    f.rationale = "Netsh Helper DLL 指向可写路径（netsh 启动时自动加载）: " + v.name + " → " + v.data.substr(0, 150);
+                    f.object_ref = "NetSh\\" + v.name;
+                    f.advice_id = "ADVICE.AUTORUN.REVIEW.001";
+                    ctx.add_finding(f);
+                }
+            }
+            ctx.checked_source("NetSh Helper DLL");
+        }
+    }
+
+    // 8) Active Setup (T1547.014) — 用户登录时以管理员执行
+    {
+        const std::wstring as = L"SOFTWARE\\Microsoft\\Active Setup\\Installed Components";
+        HKEY h = open_key(HKEY_LOCAL_MACHINE, as, false);
+        if (h) {
+            for (const auto& clsid : reg_subkeys(h)) {
+                std::string cmd;
+                reg_get(HKEY_LOCAL_MACHINE, as + L"\\" + clsid, L"StubPath", false, cmd);
+                if (cmd.empty()) continue;
+                if (is_writable_path(cmd) || !is_expected_path(cmd)) {
+                    Finding f;
+                    f.rule_id = "WIN.BASE.ACTIVESETUP.001";
+                    f.severity = "medium";
+                    f.confidence = "medium";
+                    f.rationale = "Active Setup StubPath 引用非常规路径（用户每次登录时以管理员执行）: " +
+                                  wide_to_utf8(clsid) + " → " + cmd.substr(0, 150);
+                    f.object_ref = "ActiveSetup\\" + wide_to_utf8(clsid);
+                    f.advice_id = "ADVICE.AUTORUN.REVIEW.001";
+                    ctx.add_finding(f);
+                }
+            }
+            RegCloseKey(h);
+            ctx.checked_source("Active Setup StubPath");
+        }
+    }
+
+    // 9) .NET CLR Profiler (T1574.012) — 环境变量持久化
+    {
+        std::string cor_prof, cor_path;
+        reg_get(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment",
+                L"COR_ENABLE_PROFILING", false, cor_prof);
+        reg_get(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment",
+                L"COR_PROFILER_PATH", false, cor_path);
+        if (cor_prof == "1" && !cor_path.empty()) {
+            Finding f;
+            f.rule_id = "WIN.BASE.CORPROFILER.001";
+            f.severity = "medium";
+            f.confidence = "medium";
+            f.rationale = ".NET CLR Profiler 持久化（COR_ENABLE_PROFILING=1 + COR_PROFILER_PATH）: " + cor_path.substr(0, 150);
+            f.object_ref = "COR_PROFILER_PATH";
+            f.advice_id = "ADVICE.AUTORUN.REVIEW.001";
+            ctx.add_finding(f);
+        }
+    }
+
+    // 10) Windows Defender 排除项（攻击者添加以免杀）
+    {
+        for (const wchar_t* excl_path : {
+            L"SOFTWARE\\Microsoft\\Windows Defender\\Exclusions\\Paths",
+            L"SOFTWARE\\Microsoft\\Windows Defender\\Exclusions\\Extensions",
+            L"SOFTWARE\\Microsoft\\Windows Defender\\Exclusions\\Processes",
+        }) {
+            HKEY h = open_key(HKEY_LOCAL_MACHINE, excl_path, false);
+            if (!h) continue;
+            auto vals = reg_values(h);
+            RegCloseKey(h);
+            for (const auto& v : vals) {
+                if (v.data == "0") continue; // 未启用
+                Finding f;
+                f.rule_id = "WIN.BASE.DEFEXCL.001";
+                f.severity = "medium";
+                f.confidence = "high";
+                f.rationale = "Windows Defender 排除项（攻击者可利用以免杀）: " + v.name + " = " + v.data;
+                f.object_ref = wide_to_utf8(excl_path) + "\\" + v.name;
+                f.advice_id = "ADVICE.HARDEN.001";
+                ctx.add_finding(f);
+            }
+            ctx.checked_source(wide_to_utf8(excl_path));
+        }
+    }
+
+    // 11) Port Monitor DLL (T1547.010)
+    {
+        const std::wstring pm = L"SYSTEM\\CurrentControlSet\\Control\\Print\\Monitors";
+        HKEY h = open_key(HKEY_LOCAL_MACHINE, pm, false);
+        if (h) {
+            for (const auto& mon : reg_subkeys(h)) {
+                std::string driver;
+                reg_get(HKEY_LOCAL_MACHINE, pm + L"\\" + mon, L"Driver", false, driver);
+                if (driver.empty()) continue;
+                if (is_writable_path(driver)) {
+                    Finding f;
+                    f.rule_id = "WIN.BASE.PORTMON.001";
+                    f.severity = "high";
+                    f.confidence = "medium";
+                    f.rationale = "打印监控器 DLL 指向可写路径（Print Monitor 持久化）: " +
+                                  wide_to_utf8(mon) + " → " + driver.substr(0, 150);
+                    f.object_ref = "PrintMonitor\\" + wide_to_utf8(mon);
+                    f.advice_id = "ADVICE.AUTORUN.REVIEW.001";
+                    ctx.add_finding(f);
+                }
+            }
+            RegCloseKey(h);
+            ctx.checked_source("Port Monitor DLL");
+        }
+    }
+
     ctx.set_status(ModuleStatus::PASS);
 }
 
