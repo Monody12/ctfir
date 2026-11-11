@@ -230,8 +230,8 @@ void mod_tasks(ModuleCtx& ctx) {
                         f.limitations = {"备份/运维任务可能相似；XML 原文见会话 evidence"};
                         f.advice_id = "ADVICE.TASK.REVIEW.001";
                         ctx.add_finding(f);
-                    } else {
-                        // 引用路径分析（A7C9-W03 同构）：动作引用非常规路径
+                    } else if (full.find("\\Microsoft\\") != 0) {
+                        // 引用路径分析（A7C9-W03 同构）：动作引用非常规路径——仅非系统任务
                         for (const auto& rp : extract_paths(action_txt)) {
                             if (is_expected_path(rp)) continue;
                             Finding f;

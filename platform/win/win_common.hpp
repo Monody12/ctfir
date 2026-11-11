@@ -81,6 +81,24 @@ inline std::vector<RegValue> reg_values(HKEY h) {
                 else if (t2 == REG_DWORD && s2 >= 4) {
                     DWORD v = *reinterpret_cast<DWORD*>(buf.data());
                     data = std::to_string(v);
+                } else if (t2 == REG_MULTI_SZ && s2 >= 4) {
+                    // 多字符串：\0 分隔，转 "a、b、c"
+                    const wchar_t* w = reinterpret_cast<wchar_t*>(buf.data());
+                    size_t wn = s2 / 2;
+                    std::vector<std::string> parts;
+                    for (size_t k = 0; k < wn;) {
+                        std::wstring cur;
+                        while (k < wn && w[k] != L'\0') { cur += w[k]; ++k; }
+                        ++k; // 跳过分隔 \0
+                        if (!cur.empty()) parts.push_back(wide_to_utf8(cur));
+                        if (k > 0 && w[k - 1] == L'\0' && (k >= wn || w[k] == L'\0')) break; // 双 \0 结束
+                    }
+                    std::string joined;
+                    for (size_t k = 0; k < parts.size(); ++k) {
+                        if (k) joined += "、";
+                        joined += parts[k];
+                    }
+                    data = joined;
                 } else {
                     data = "<binary " + std::to_string(s2) + "B>";
                 }
