@@ -73,7 +73,9 @@ jobs:
 
       - name: Zip
         shell: pwsh
-        run: Compress-Archive -Path staging/* -DestinationPath "ctfir-v${{ github.ref_name }}-windows-x64.zip" -Force
+        env:
+          REF: ${{ github.ref_name }}
+        run: Compress-Archive -Path staging/* -DestinationPath ("ctfir-v" + ($env:REF -replace '^v','') + "-windows-x64.zip") -Force
 
       - uses: actions/upload-artifact@v4
         with:
@@ -101,3 +103,10 @@ jobs:
             rel/*.zip
             rel/SHA256SUMS.txt
           generate_release_notes: true
+          body: |
+            ## 比赛携行版（断网可用）
+
+            - **Windows**：解压即用 `ctfir.exe`（CLI）/ `ctfir-gui.exe`（GUI）——静态 /MT 编译，零运行时依赖，无管理员权限也可跑（受限模块如实标 PERMISSION_DENIED）
+            - **Linux**：解压后 `chmod +x ctfir`——musl 静态二进制
+            - **15 分钟应急流程**：`ctfir doctor`（体检）→ `ctfir scan --out out`（只读全扫）→ `ctfir playbook`（离线六步处置手册）→ `ctfir fix --session out --all --yes`（受控一键修复，自动备份+日志）→ `ctfir diff`（修复复核）
+            - 完整说明见包内 `README-先读我.md` / `KNOWN_LIMITATIONS.md`；校验见 `SHA256SUMS.txt`
