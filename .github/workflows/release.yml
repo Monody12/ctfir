@@ -52,24 +52,24 @@ jobs:
 
       - uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Build（VS 生成器；/MT 与 WINVER 由 CMakeLists 定义）
+      - name: Build（Ninja + msvc-dev-cmd；/MT 与 WINVER 由 CMakeLists 定义）
         shell: bash
         run: |
-          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --config Release
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
 
       - name: Unit tests
         shell: bash
-        run: ./build/Release/ctfir_tests.exe
+        run: ./build/ctfir_tests.exe
 
       - name: Verify 零依赖（dumpbin 依赖面）
         shell: bash
         run: |
-          dumpbin //dependents build/Release/ctfir.exe | head -30
+          dumpbin //dependents build/ctfir.exe | head -30
 
       - name: Stage package
         shell: bash
-        run: bash scripts/package-ci.sh --platform windows-x64 --ver "${GITHUB_REF_NAME#v}" --out staging --bin build/Release/ctfir.exe build/Release/ctfir-gui.exe
+        run: bash scripts/package-ci.sh --platform windows-x64 --ver "${GITHUB_REF_NAME#v}" --out staging --bin build/ctfir.exe build/ctfir-gui.exe
 
       - name: Zip
         shell: pwsh
