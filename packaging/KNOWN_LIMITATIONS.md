@@ -20,3 +20,9 @@
 15. **PowerShell 历史**：只读 PSReadLine `ConsoleHost_history.txt`（各用户 Roaming 路径）；不写、不改用户历史；Windows PowerShell 5 与 7 的其他历史文件不覆盖。
 16. **Web 日志攻击特征**：基于解码后的子串，无业务上下文；命中=线索。curl / python-requests UA 故意不报（运维脚本误报高）。
 17. **业务数据恢复**：不在工具范围（决赛指南该项属人工步骤）。动态流量、内存取证、内核 rootkit 仍不覆盖。
+
+## v0.6.1 补充（2026-11-12）
+
+18. **事件通道不由测试清理**：真实服务创建会产生 System 7045 与（若审核开启）Security 4697。夹具在 finally 中删除临服务并复扫确认服务/文件/注册表干净；**禁止** `wevtutil cl` 清空通道。复扫仍可能看到这些事件，属预期，不是清理失败。
+19. **PowerShell 历史测试隔离**：自动化用例只读 `CTFIR_FIXTURE_PSHIST` 指向的临时夹具，不读、不改用户真实 `ConsoleHost_history.txt`。生产扫描路径不变（各用户 Roaming）。
+20. **平台格替代**：Server 2008 R2 真 OS 与 CentOS 3.10 真内核无法在本开发机用容器启动（见 COMPATIBILITY）。已用合成事件 XML 与 centos:7 用户态夹具做最接近的自动化替代，不把这两格写成 PASSED。

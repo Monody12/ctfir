@@ -1,6 +1,8 @@
 // Windows 模块第二批：W03 计划任务(COM) / W07 进程与连接 / W09 事件日志 / W13 Web
 #include "win_common.hpp"
 #include "core/log_attack.hpp"
+#include "core/evt_xml.hpp"
+#include <cstdlib>
 
 #include <winsock2.h>
 #include <taskschd.h>
@@ -26,23 +28,12 @@ namespace ctfir::win {
 
 namespace {
 
-// XML Data 字段提取（Name="X">value< ——只做子串定位，不引 XML 库，见 PLAN 边界声明）
+// XML 字段提取：委托 core/evt_xml.hpp（覆盖 2008 R2 EventID Qualifiers）
 static std::string xml_data(const std::string& x, const char* name) {
-    std::string pat = std::string("Name=\"") + name + "\">";
-    size_t p = x.find(pat);
-    if (p == std::string::npos) return "";
-    size_t s = p + pat.size(), e = x.find('<', s);
-    return (e == std::string::npos) ? "" : x.substr(s, e - s);
+    return ::ctfir::evt_xml_data(x, name);
 }
-
-// SystemTime 属性 → 规整为 YYYY-MM-DDTHH:MM:SSZ（去毫秒，供 beijing_time_str 解析）
 static std::string xml_time(const std::string& x) {
-    size_t p = x.find("SystemTime=\"");
-    if (p == std::string::npos) return "";
-    size_t s = p + 12, e = x.find('"', s);
-    std::string t = (e == std::string::npos) ? "" : x.substr(s, e - s);
-    if (t.size() >= 19) t = t.substr(0, 19) + "Z";
-    return t;
+    return ::ctfir::evt_xml_time(x);
 }
 
 // ---- W03 计划任务（Task Scheduler 2.0 COM，递归含隐藏）----
@@ -461,18 +452,14 @@ void mod_evtlog(ModuleCtx& ctx) {
             }
             std::string x = wide_to_utf8(xml.data());
             ++read;
-            int eid = 0;
-            {
-                size_t p1 = x.find("<EventID>");
-                if (p1 != std::string::npos) eid = std::atoi(x.c_str() + p1 + 9);
-            }
+            int eid = ::ctfir::evt_xml_event_id(x);
             std::string t = xml_time(x);
             std::string tb = t.empty() ? "" : beijing_time_str(t);
             std::string target = xml_data(x, "TargetUserName");
             std::string ip = xml_data(x, "IpAddress");
             std::string member = xml_data(x, "MemberName");
             std::string group = xml_data(x, "TargetUserName");
-            if (eid == 0) { size_t p1 = x.find("<EventID>"); if (p1 != std::string::npos) eid = std::atoi(x.c_str() + p1 + 9); }
+            if (eid == 0) eid = ::ctfir::evt_xml_event_id(x);
 
             if (eid == 4625) {
                 ++fail_total;
@@ -1366,28 +1353,48 @@ void mod_ransom(ModuleCtx& ctx) {
 
 // ---- WIN.TRACE.PSHIST：PowerShell 历史命令取证（玄机：PSReadLine ConsoleHost_history.txt）----
 void mod_pshist(ModuleCtx& ctx) {
-    char up[MAX_PATH]{};
-    if (!SUCCEEDED(SHGetFolderPathA(nullptr, CSIDL_PROFILE, nullptr, 0, up))) {
-        ctx.set_status(ModuleStatus::PASS);
-        return;
-    }
-    // 所有用户 + 当前用户的 PSReadLine 历史
     std::vector<std::string> hists;
-    hists.push_back(std::string(up) + "\\AppData\\Roaming\\Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt");
-    // 遍历其它用户
-    WIN32_FIND_DATAA fd;
-    HANDLE fh = FindFirstFileA("C:\\Users\\*", &fd);
-    if (fh != INVALID_HANDLE_VALUE) {
-        do {
-            if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
-            if (fd.cFileName[0] == '.') continue;
-            std::string u = std::string("C:\\Users\\") + fd.cFileName +
-                            "\\AppData\\Roaming\\Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt";
-            if (u != hists[0]) hists.push_back(u);
-        } while (FindNextFileA(fh, &fd));
-        FindClose(fh);
+    const char* fx = std::getenv("CTFIR_FIXTURE_PSHIST");
+    if (fx && *fx) {
+        // 测试隔离：只扫描夹具文件或目录，不读用户真实历史
+        ctx.note("CTFIR_FIXTURE_PSHIST 已设置——仅扫描夹具（测试隔离，不读取真实用户历史）");
+        std::string p = fx;
+        DWORD a = GetFileAttributesA(p.c_str());
+        if (a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY)) {
+            WIN32_FIND_DATAA fd;
+            HANDLE fh = FindFirstFileA((p + "\\*.txt").c_str(), &fd);
+            if (fh != INVALID_HANDLE_VALUE) {
+                do {
+                    if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+                    hists.push_back(p + "\\" + fd.cFileName);
+                } while (FindNextFileA(fh, &fd));
+                FindClose(fh);
+            }
+        } else {
+            hists.push_back(p);
+        }
+    } else {
+        char up[MAX_PATH]{};
+        if (!SUCCEEDED(SHGetFolderPathA(nullptr, CSIDL_PROFILE, nullptr, 0, up))) {
+            ctx.set_status(ModuleStatus::PASS);
+            return;
+        }
+        // 所有用户 + 当前用户的 PSReadLine 历史
+        hists.push_back(std::string(up) + "\\AppData\\Roaming\\Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt");
+        WIN32_FIND_DATAA fd;
+        HANDLE fh = FindFirstFileA("C:\\Users\\*", &fd);
+        if (fh != INVALID_HANDLE_VALUE) {
+            do {
+                if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
+                if (fd.cFileName[0] == '.') continue;
+                std::string u = std::string("C:\\Users\\") + fd.cFileName +
+                                "\\AppData\\Roaming\\Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt";
+                if (u != hists[0]) hists.push_back(u);
+            } while (FindNextFileA(fh, &fd));
+            FindClose(fh);
+        }
     }
-    int scanned = 0, hits = 0;
+        int scanned = 0, hits = 0;
     for (const auto& hp : hists) {
         ReadResult r = read_text_file(hp, 2 * 1024 * 1024);
         if (!r.ok) continue;

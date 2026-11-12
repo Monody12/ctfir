@@ -10,7 +10,7 @@
 2. **离线**——代码中零网络 API；报告零外部资源，可断网打开。
 3. **如实**——PASS 只代表"声明范围内未命中"；权限不足 / 超时 / 未覆盖项全部如实列出，不充当安全结论。
 
-- **当前版本**：v0.6.0（规则包 6.0.0，2026-11-12）｜ 许可证 [MIT](LICENSE)
+- **当前版本**：v0.6.1（规则包 6.0.1，2026-11-12）｜ 许可证 [MIT](LICENSE)
 - **支持平台**：Windows 7 SP1+ x64 / Windows 10/11 x64（GUI + CLI）；Linux x86_64 静态二进制（CLI，CentOS 7 用户态已验）
 - **完整兼容矩阵**：[packaging/COMPATIBILITY.md](packaging/COMPATIBILITY.md) ｜ 已知限制：[packaging/KNOWN_LIMITATIONS.md](packaging/KNOWN_LIMITATIONS.md)
 
@@ -20,7 +20,7 @@
 
 ### 1.1 获取
 
-- 从 [Releases](https://github.com/Monody12/ctfir/releases) 下载对应架构包（`ctfir-v0.6-windows-x64.zip` / `ctfir-v0.6-linux-x86_64.zip`），或自行构建（见开发者章节）。
+- 从 [Releases](https://github.com/Monody12/ctfir/releases) 下载对应架构包（`ctfir-v0.6.1-windows-x64.zip` / `ctfir-v0.6.1-linux-x86_64.zip`），或自行构建（见开发者章节）。
 - 复制整个目录到**目标机本地**（不要在共享盘直接运行），核对 `SHA256SUMS`。
 
 ### 1.2 图形界面（Windows）
@@ -128,6 +128,8 @@ bash scripts/package.sh
 | CentOS 真实环境 | `tests/fixture_builder_centos.sh`：在 centos-ir-lab（httpd/sshd/crond 常驻）部署 marker 夹具 → 扫描断言 → 清理复验（15 项） | `bash tests/fixture_builder_centos.sh <二进制>` |
 | Win7 真机 | `tests/fixture_builder_win.sh`：外部独立验收矩阵八项断言（事实化/隐藏账户/参数路径/禁用任务/回环 hosts/基线/零误报/双扩展） | 需 `Administrator@192.168.0.14` 免密 SSH |
 
+全套自动化（构建+单测+Windows 夹具+Linux 多发行版容器夹具）：`powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-all.ps1`。
+
 **加新检测点的流程**（强制顺序）：先在 [docs/DETECTION-POINTS.md](docs/DETECTION-POINTS.md) 登记条目（来源 / ATT&CK ID / 正负例设计）→ 实现采集与规则 → `tests/cases/*.tsv` 加用例行 → 夹具断言通过 → 更新台账。每条规则最少 1 正例 + 2 负例 + 3 变体。
 
 ### 2.5 治理与过程文档
@@ -145,7 +147,7 @@ bash scripts/package.sh
 
 ### 2.6 已知限制（摘要）
 
-完整版见 [packaging/KNOWN_LIMITATIONS.md](packaging/KNOWN_LIMITATIONS.md)。重点：无内置可信基线（哈希只留证不判定篡改）；WMI 事件消费者 / 深层 SAM / 内核 rootkit / 内存取证未覆盖；ShimCache 为启发式提取；Windows 签名验证未接入；`diff` 仅对比 findings。Server 2008 R2 与 CentOS 内核 3.10 真机为未测格。
+完整版见 [packaging/KNOWN_LIMITATIONS.md](packaging/KNOWN_LIMITATIONS.md)。重点：无内置可信基线（哈希只留证不判定篡改）；WMI 事件消费者 / 深层 SAM / 内核 rootkit / 内存取证未覆盖；ShimCache 为启发式提取；Windows 签名验证未接入；`diff` 仅对比 findings。Server 2008 R2 真 OS 与 CentOS 内核 3.10 真机无法在开发机容器中启动，已用合成事件 XML 与 centos:7 用户态夹具做自动化替代（不宣称这两格 PASSED），见 COMPATIBILITY 与 TEST_RESULTS #40。
 
 ---
 

@@ -2,7 +2,7 @@
 # ctfir 发布打包（WP8）：双平台 ZIP + SHA256SUMS + BUILDINFO + SBOM
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VER="0.6"
+VER="0.6.1"
 STAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 REL="/d/ctfir-build/release"
 rm -rf "$REL"; mkdir -p "$REL/win-x64" "$REL/linux-x86_64"
@@ -41,7 +41,7 @@ done
 # ---------- BUILDINFO / SBOM ----------
 for d in "$REL/win-x64" "$REL/linux-x86_64"; do
 cat > "$d/BUILDINFO.json" <<JSON
-{"tool":"ctfir","version":"$VER","built_utc":"$STAMP","schema_version":1,"rule_pack":"6.0.0",
+{"tool":"ctfir","version":"$VER","built_utc":"$STAMP","schema_version":1,"rule_pack":"6.0.1",
  "platform":"$(basename $d)","builder":"scripts/build-*.sh (见仓库)","source":"github.com/Monody12/ctfir"}
 JSON
 cat > "$d/SBOM.json" <<'JSON'

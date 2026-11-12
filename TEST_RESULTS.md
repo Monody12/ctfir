@@ -431,4 +431,69 @@ elease\）**：
 - 导入面：ctfir.exe = KERNEL32+SHELL32+ole32+OLEAUT32+ADVAPI32+NETAPI32+IPHLPAPI+WS2_32+wevtapi（零 CRT 运行时）；Linux 纯静态 musl
 - **未 git push、未创建 GitHub Release**——待确认后再做。
 
+## 2026-11-12 v0.6.1（#40：原 manual/NOT_TESTED 全部自动化 + 测试完善）
 
+**版本**：kToolVersion **0.6.1** / 规则包 **6.0.1** / 检测点仍 **142**（无新规则 ID；Windows 补齐 MID.MYSQL 同 ID 平台实现；EventID Qualifiers 与 BootExecute MULTI_SZ 为解析/误报修复）。小版本用于本轮测试完善与上述代码修正。
+
+**一条命令**：`powershell -NoProfile -ExecutionPolicy Bypass -File scripts\test-all.ps1`（测试脚本可联网/Docker；工具运行时仍离线零网络、只读为主）。若 `scripts/build-win.sh` 在 Git Bash 下因 `cmd //c` 空转未刷新产物，test-all 会回退到 `cmd.exe /c` + vcvars64 + cmake。
+
+### 原 manual / NOT_TESTED 逐项（方式与结果）
+
+| 原项 | 自动化方式 | 结果 |
+|---|---|---|
+| F36 Win System 7045 真实正例 | `tests/fixture_win.py`：`sc create ctfir-marker-svc binPath= <可写路径\marker.exe>` 制造真实事件；扫描断言 WIN.EVT.SVC7045 且命中「可写路径」启发式；`sc delete` + finally/atexit 幂等清理（失败也删服务）；复扫确认服务不存在 | **F36 PASS**；清理后 `sc query` 错误 1060（未安装）；事件通道不清理，7045 残留属预期 |
+| F36b Security 4697 | 同一临服务；`auditpol` 以 GUID `{0CCE9211-69AE-11D9-BED3-505054503030}`（Security System Extension）临时开启 Success/Failure，测后还原备份 | **F36b PASS**；auditpol 已还原 |
+| F38/F39 PowerShell 历史 | 环境变量 `CTFIR_FIXTURE_PSHIST` 指向临时夹具目录（含正例 `ConsoleHost_history.txt` + 负例干净文件）；生产扫描路径不变；断言命中路径不含用户真实 `AppData\Roaming\...\PowerShell` | **F38/F39 PASS**；夹具测后删除，未读未改真实历史 |
+| F08 IFEO / F09 AppInit / F10 LogonScript / F11 BootExecute | 临注册表夹具（IFEO 仅针对 `ctfir-marker-ifeo.exe`；AppInit 短暂写入且不打开 LoadAppInit_DLLs=1；BootExecute 追加后精确还原 MULTI_SZ） | **全部 PASS**；清理后 AppInit 空、BootExecute=`autocheck autochk *` |
+| F17 AUTHFAIL / F18 矿池 / F19 -enc / F21 prefetch / F25 防火墙 / F26 共享 / F28 IIS / F33 GBK hosts / F37 无 svchost 误报 / F40 ADS / F41 Zone.Identifier / F43–F45 Web | 全部纳入 fixture_win.py，`ctfir-marker` 前缀，自备清理 | **全部 PASS**（ADS 文件放在 `C:\Users\Public\` 根目录，因模块不递归子目录） |
+| Windows MySQL 日志路径缺口 | 新模块 `mod_mysql_win`（`platform/win/mod_w4.cpp`）：phpstudy_pro / phpstudy / wamp / xampp / Program Files MySQL 与 MariaDB + `CTFIR_FIXTURE_MYSQL`；夹具自动造 slow/general/binlog 正例与普通 SELECT 负例；清理不触碰真实 phpstudy 安装 | **M01–M04 PASS**；规则 ID 与 Linux 相同：MID.MYSQL.LOGSHELL / SLOWLOG / BINLOG |
+| Linux 原 manual（L06/L10/L16/L18/L22/L23/L27/L32/L34/L35/L39/L48 等） | `fixture_linux.sh`（便携 DELETED/MINER/SUID：自写脚本 `chmod 4755`，矿池 token 用 `sleep N; true` 避免 exec 优化丢掉 argv0）+ `fixture_hidepid.sh` + `fixture_builder_centos.sh` + `fixture_distros.sh` | 见下方数字，全绿；测后清理复扫无 marker |
+| CentOS 3.10 真内核 | **Docker 技术不可行**：容器共享宿主内核（本机 WSL2 `6.6.87.2-microsoft-standard-WSL2`）。替代：centos:7 用户态（3.10 时代 glibc 2.17 布局）+ centos-ir-lab。未起 QEMU 3.10 VM。不把该格标 PASSED | 用户态 **42/42** 与 **75/75**（AUTOMATED_SUBSTITUTE） |
+| Server 2008 R2 真 OS | **Windows 容器不可行**：容器需匹配宿主内核，无法在 Win11 10.0.26100 上跑 2008 R2；镜像亦极重且无合法来源。替代：`tests/test_evt_xml.cpp` 使用 2008 R2 形态 `<EventID Qualifiers="16384">7045</EventID>` 及 4697 合成 XML；同一 `_WIN32_WINNT=0x0601` API 由本机 fixture_win 行使。不把 2008 R2 OS 格标 PASSED | 单测 **5/5**（AUTOMATED_SUBSTITUTE） |
+| Win7 x86 | ADR-001 DEFERRED，首版不打包 x86——构建范围外，不是“未写测试” | 保持 DEFERRED |
+| Win10 22H2 | 本宿主是 Win11 `10.0.26100`，无 22H2 映像，不标 PASSED | 宿主不是 22H2 |
+| C 级（内核 rootkit / 内存取证 / 磁盘镜像 / 深层 SAM RID / ROW binlog 完整还原） | 未实现范围，非未测功能 | DEFERRED / NOT_IMPLEMENTED |
+
+**清理闭环（Windows 夹具结束后本机抽查，北京时间 16:43 前）**：`ctfir-marker-svc` 未安装（1060）；AppInit_DLLs 为空；BootExecute 仅默认 `autocheck autochk *`；hosts 无 marker；`C:\Users\Public\ctfir-marker-ads.txt` 与 phpstudy MySQL 夹具目录不存在。事件 7045/4697 残留属预期（禁止 `wevtutil cl`）。
+
+### 构建与测试数字（北京时间 2026-11-12）
+
+- `scripts/scan_bad_escapes.py`：**total 0**
+- Windows 单测（`ctfir_tests.exe`）：**59/59 PASS**（含新增 `test_evt_xml` 5 条：2008 R2 Qualifiers 7045/4697、Win11 4625、单引号 Name）
+- Linux musl 单测（alpine 容器跑 `ctfir_tests`）：**55/55 PASS**（无 Win 专有 extract_paths 用例）
+- `tests/fixture_win.py`：**29/29 PASS，fail=0**
+  - 正例命中：F08 IFEO、F09 AppInit、F10 LogonScript、F11 BootExecute 额外项、F17 AUTHFAIL（25 次 LogonUser 失败）、F18 stratum、F19 -enc、F21 prefetch XMRIG stub、F25 防火墙、F26 共享、F28 IIS POST W3SVC99、F33 GBK hosts、F36 7045 可写路径、F36b 4697、F38 PSHIST 夹具隔离、F40 ADS hidden.exe、F43–F45 Web 攻击、M01–M04 MySQL
+  - 负例通过：F37 无 svchost 误报、F39 干净 PSHIST、F41 Zone.Identifier 不报、M04 普通 SELECT 不报
+  - **未解释误报：0**
+- Alpine 3.20 `fixture_linux.sh`：**42/42 PASS**（含 nobody 低权限 exit=2 / PERMISSION_DENIED / PARTIAL，denied modules=5）
+- hidepid L39（privileged remount hidepid=2）：**PASS**
+- centos-ir-lab `fixture_builder_centos.sh`：**75/75 PASS**（含历史断言、原 manual 扩展、fix 闭环执行/跳过/不支持计数、清理复验）
+- 发行版用户态：centos:7 **42/42**、debian:8 **42/42**、ubuntu:16.04 **42/42**
+
+### 规则 / 代码变更（无新规则 ID）
+
+- 新文件：`core/evt_xml.hpp`（`evt_xml_event_id` 识别 Qualifiers 形态与单引号 Name）；`tests/test_evt_xml.cpp`
+- `platform/win/win_common.hpp`：`reg_get` 解码 REG_MULTI_SZ（用顿号「、」拼接）；REG_SZ 去尾部 NUL
+- `platform/win/mod_w.cpp`：BootExecute 在保留默认 `autocheck autochk *` 时对额外项告警（修复原先 MULTI_SZ 被显示为 `<binary>` 导致的误报或漏报）
+- `platform/win/mod_w2.cpp`：EventID 走 evt_xml；测试钩子 `CTFIR_FIXTURE_PSHIST`（文件或目录 `*.txt`，设置后不读真实用户历史）
+- `platform/win/mod_w4.cpp`：新 `mod_mysql_win`，规则 ID 同 Linux：`MID.MYSQL.LOGSHELL.001` / `MID.MYSQL.SLOWLOG.001` / `MID.MYSQL.BINLOG.001`；可选 `CTFIR_FIXTURE_MYSQL`
+- 测试基础设施：`tests/fixture_win.py`、`tests/fixture_linux.sh` 扩展、`tests/fixture_builder_centos.sh` 扩展、`tests/fixture_distros.sh`、`tests/fixture_hidepid.sh`、`scripts/test-all.ps1`；`tests/cases/cases_{win,linux}.tsv` 全部 `\tmanual` → `\tauto`
+- 版本：`core/model.hpp` kToolVersion=0.6.1、rule_pack_version=6.0.1；CMake VERSION 0.6.1；`scripts/package.sh` VER=0.6.1
+
+### 二进制与发布包（需重出，二进制已变）
+
+构建时间 2026-11-12 16:34–16:35（北京时间）；打包 BUILDINFO.built_utc=2026-11-12T08:43:56Z（北京 16:43）。路径 `D:\ctfir-build\`：
+
+| 文件 | SHA256 | 大小 |
+|---|---|---|
+| cmake-build/ctfir.exe | DA3281085EE9B42EB2640EABB3017441A91E3CA17D9249E8B59FF267C1D62E0C | 1346048 |
+| cmake-build/ctfir-gui.exe | 36124473CB2EFAFAFC032CE8FD93BED0519191D52661D311B90CE9703CA4E8B8 | 1280000 |
+| cmake-build/ctfir_tests.exe | 731D2263966520C1916BBA3AC0CA8A84E4AD8CDA96824CDA5310E55E8269A6ED | 948224 |
+| linux/ctfir | A569CDA12F4D8B5FDA914A02F08F3EE0D7D066927855CB1B31489A03B7EA53EC | 3783720 |
+| linux/ctfir_tests | 6414F582ABDCF3B67D139329325D992EB40EB49DE345F90355EBEAD5B83077CD | 2948800 |
+| release/ctfir-v0.6.1-windows-x64.zip | 7bfb4ec1cff7b32fe97faa2286184ab4be961c52a13f792e627731376597815d | 996641 |
+| release/ctfir-v0.6.1-linux-x86_64.zip | 29aed455646a88d7c5ca2900af6cf5a9b6416be4b7e6f98c3ac2207e69d5b6dd | 1419604 |
+
+Linux `ldd` = Not a valid dynamic program（纯静态 musl，预期）。
+
+**未 git push、未创建 GitHub Release**——待确认后再做。

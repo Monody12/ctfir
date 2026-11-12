@@ -1,6 +1,8 @@
 // Windows 基线核查模块族（v0.4）：密码策略 / 账户口令状态 / RDP / SMBv1 / 自动登录 /
 // 补丁留证 / 日志保留 / 高危端口监听。依据等保基线检查项 + 决赛指南"安全基线核查"考点。
 #include "win_common.hpp"
+#include "core/log_attack.hpp"
+#include <cstdlib>
 
 #include <winsock2.h>
 #include <iphlpapi.h>
@@ -879,6 +881,206 @@ void mod_base_persist(ModuleCtx& ctx) {
     ctx.set_status(ModuleStatus::PASS);
 }
 
+// ---- MID.MYSQL（Windows）：phpstudy / wamp / xampp / 官方路径的 general/slow/binlog 取证 ----
+// 规则 ID 与 Linux 侧一致（MID.MYSQL.LOGSHELL / SLOWLOG / BINLOG），只扫明文关键字，不连库。
+void mod_mysql_win(ModuleCtx& ctx) {
+    std::vector<std::string> roots;
+    const char* fx = std::getenv("CTFIR_FIXTURE_MYSQL");
+    if (fx && *fx) {
+        roots.push_back(fx);
+        ctx.note("CTFIR_FIXTURE_MYSQL 已设置——附加扫描夹具根（测试用）");
+    }
+    const char* known[] = {
+        "C:\\phpstudy_pro\\Extensions",
+        "C:\\phpstudy\\MySQL",
+        "C:\\phpstudy\\MYSQL",
+        "C:\\phpstudy\\PHPTutorial\\MySQL",
+        "C:\\phpstudy\\PHPTutorial\\MariaDB",
+        "D:\\phpstudy_pro\\Extensions",
+        "D:\\phpstudy\\MySQL",
+        "D:\\phpstudy\\PHPTutorial\\MySQL",
+        "C:\\wamp64\\bin\\mysql",
+        "C:\\wamp\\bin\\mysql",
+        "C:\\xampp\\mysql",
+        "D:\\xampp\\mysql",
+        "C:\\Program Files\\MySQL",
+        "C:\\ProgramData\\MySQL",
+        "C:\\Program Files\\MariaDB",
+    };
+    for (const char* k : known) roots.push_back(k);
+
+    auto list_entries = [](const std::string& dir, bool dirs_only) {
+        std::vector<std::string> out;
+        WIN32_FIND_DATAA fd;
+        HANDLE fh = FindFirstFileA((dir + "\\*").c_str(), &fd);
+        if (fh == INVALID_HANDLE_VALUE) return out;
+        do {
+            if (fd.cFileName[0] == '.') continue;
+            bool isdir = (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+            if (dirs_only != isdir) continue;
+            out.push_back(dir + "\\" + fd.cFileName);
+        } while (FindNextFileA(fh, &fd));
+        FindClose(fh);
+        return out;
+    };
+
+    // 收集候选目录：根本身 + 一层子目录（MySQL5.7.26、mysql8.0.xx 等）
+    std::vector<std::string> cands;
+    for (const auto& r : roots) {
+        if (!dir_exists(r)) continue;
+        cands.push_back(r);
+        for (const auto& sub : list_entries(r, true)) cands.push_back(sub);
+    }
+
+    std::vector<std::string> glogs, slogs, blogs, inis;
+    auto push_unique = [](std::vector<std::string>& v, const std::string& p) {
+        for (const auto& e : v) if (_stricmp(e.c_str(), p.c_str()) == 0) return;
+        v.push_back(p);
+    };
+
+    auto classify_file = [&](const std::string& fp) {
+        std::string low = to_lower(fp);
+        std::string base = low;
+        size_t sl = base.find_last_of("\\/");
+        if (sl != std::string::npos) base = base.substr(sl + 1);
+        if (ends_with(base, ".ini") && (base == "my.ini" || base == "my.cnf" || base == "mysql.ini"))
+            push_unique(inis, fp);
+        if (ends_with(low, ".log") && low.find("slow") != std::string::npos)
+            push_unique(slogs, fp);
+        else if (ends_with(low, ".log") &&
+                 (low.find("general") != std::string::npos || base == "mysql.log" ||
+                  (low.find("error") == std::string::npos && low.find("ib_") == std::string::npos &&
+                   low.find("slow") == std::string::npos && ends_with(base, ".log") &&
+                   (base.find("-") == std::string::npos /* hostname.log 常为 general */)))) {
+            if (low.find("error") == std::string::npos && low.find("ib_") == std::string::npos &&
+                low.find("slow") == std::string::npos)
+                push_unique(glogs, fp);
+        }
+        if (base.find("mysql-bin.") == 0 || base.find("binlog.") == 0 ||
+            base.find("-bin.0") != std::string::npos ||
+            (ends_with(base, ".index") && (base.find("bin") != std::string::npos)))
+            push_unique(blogs, fp);
+    };
+
+    auto parse_ini_paths = [&](const std::string& ini, const std::string& def_data) {
+        ReadResult r = read_text_file(ini, 512 * 1024);
+        if (!r.ok) return;
+        std::string datadir = def_data;
+        for_each_line(r.content, [&](int, const std::string& line) {
+            std::string t = trim(line);
+            if (t.empty() || t[0] == '#' || t[0] == ';') return;
+            size_t eq = t.find_first_of(" \t=");
+            if (eq == std::string::npos) return;
+            std::string k = to_lower(trim(t.substr(0, eq)));
+            std::string v = trim(t.substr(eq + 1));
+            while (!v.empty() && (v.front() == '=' || v.front() == ' ')) v.erase(v.begin());
+            if (v.size() >= 2 && ((v.front() == '"' && v.back() == '"') ||
+                                  (v.front() == '\'' && v.back() == '\'')))
+                v = v.substr(1, v.size() - 2);
+            for (char& c : v) if (c == '/') c = '\\';
+            auto loc = [&](std::string p) {
+                if (p.empty()) return p;
+                if (p.size() >= 2 && p[1] == ':') return p;
+                if (!datadir.empty()) {
+                    char last = datadir.back();
+                    return datadir + ((last == '\\' || last == '/') ? "" : "\\") + p;
+                }
+                return p;
+            };
+            if ((k == "datadir" || k == "data-dir") && !v.empty()) datadir = loc(v);
+            if ((k == "general_log_file" || k == "general-log-file") && !v.empty())
+                push_unique(glogs, loc(v));
+            if ((k == "slow_query_log_file" || k == "slow-query-log-file" ||
+                 k == "slow_query_log" || k == "log_slow_queries") &&
+                !v.empty() && v != "1" && v != "ON" && v != "on" && v != "0" && v != "OFF" && v != "off")
+                push_unique(slogs, loc(v));
+            if ((k == "log_bin" || k == "log-bin" || k == "log_bin_basename") &&
+                !v.empty() && v != "1" && v != "ON" && v != "on") {
+                std::string b = loc(v);
+                push_unique(blogs, b + ".index");
+                push_unique(blogs, b + ".000001");
+                push_unique(blogs, b);
+            }
+        });
+        // datadir 下常见文件名
+        if (dir_exists(datadir)) {
+            for (const auto& f : list_entries(datadir, false)) classify_file(f);
+        }
+    };
+
+    for (const auto& c : cands) {
+        // 目录本身的 my.ini / data / logs
+        for (const auto& f : list_entries(c, false)) classify_file(f);
+        std::string ini = c + "\\my.ini";
+        std::string cnf = c + "\\my.cnf";
+        std::string data = c + "\\data";
+        if (file_exists(ini)) parse_ini_paths(ini, dir_exists(data) ? data : c);
+        else if (file_exists(cnf)) parse_ini_paths(cnf, dir_exists(data) ? data : c);
+        else if (dir_exists(data)) {
+            for (const auto& f : list_entries(data, false)) classify_file(f);
+        }
+        // phpstudy 有时把 slow 放在实例根而不是 data
+        for (const char* n : {"mysql-slow.log", "slow.log", "slow-query.log",
+                              "mysql.log", "general.log", "mysql-bin.000001", "binlog.000001"})
+            classify_file(c + "\\" + n);
+    }
+
+    auto scan_logs = [&](const std::vector<std::string>& files, const char* rule,
+                         const char* label, int cap) {
+        int scanned = 0, hits = 0;
+        std::set<std::string> seen;
+        for (const auto& gl : files) {
+            if (scanned >= cap) break;
+            std::string key = to_lower(gl);
+            if (!seen.insert(key).second) continue;
+            if (!file_exists(gl)) continue;
+            ReadResult r = read_text_file(gl, 16 * 1024 * 1024);
+            if (!r.ok) continue;
+            ++scanned;
+            ctx.planned_source(gl);
+            for_each_line(r.content, [&](int, const std::string& line) {
+                std::string why;
+                if (!::ctfir::mysql_log_suspicious(line, &why)) return;
+                ++hits;
+                if (hits <= 4) {
+                    Finding f;
+                    f.rule_id = rule;
+                    f.severity = "high";
+                    f.confidence = "medium";
+                    f.rationale = std::string("MySQL ") + label + " 中发现 " + why + ": " +
+                                  line.substr(0, 180) + "（写马/UDF/读文件痕迹——取证金矿）";
+                    f.object_ref = gl;
+                    f.advice_id = "ADVICE.WEBSHELL.REVIEW.001";
+                    ctx.add_finding(f);
+                }
+            });
+            ctx.checked_source(gl);
+        }
+        if (scanned > 0)
+            ctx.checked_source(std::string("MySQL ") + label + " 内容取证（" +
+                               std::to_string(scanned) + " 文件）");
+        return scanned;
+    };
+
+    scan_logs(glogs, "MID.MYSQL.LOGSHELL.001", "general_log", 6);
+    scan_logs(slogs, "MID.MYSQL.SLOWLOG.001", "slow log", 6);
+    int bscan = scan_logs(blogs, "MID.MYSQL.BINLOG.001", "binlog", 6);
+    if (bscan == 0) {
+        for (const auto& b : blogs) {
+            if (file_exists(b)) {
+                ctx.note("发现 MySQL binlog/index: " + b +
+                         "（ROW 格式需 mysqlbinlog 人工还原，工具只扫描 STATEMENT 明文）");
+                ctx.checked_source(b);
+                break;
+            }
+        }
+    }
+    if (glogs.empty() && slogs.empty() && blogs.empty())
+        ctx.note("未发现常见 Windows MySQL 日志路径（phpstudy/wamp/xampp/官方）");
+    ctx.set_status(ModuleStatus::PASS);
+}
+
+
 } // namespace
 
 void register_mods_w4(std::vector<Session::ModuleDef>& mods) {
@@ -887,6 +1089,7 @@ void register_mods_w4(std::vector<Session::ModuleDef>& mods) {
     mods.push_back({"WIN.BASE.REG", "1.0.0", "windows", [](ModuleCtx& c) { mod_base_reg(c); }});
     mods.push_back({"WIN.BASE.PORTS", "1.0.0", "windows", [](ModuleCtx& c) { mod_base_ports(c); }});
     mods.push_back({"WIN.BASE.PERSIST", "1.0.0", "windows", [](ModuleCtx& c) { mod_base_persist(c); }});
+    mods.push_back({"MID.MYSQL", "1.0.0", "windows", [](ModuleCtx& c) { mod_mysql_win(c); }});
 }
 
 } // namespace ctfir::win

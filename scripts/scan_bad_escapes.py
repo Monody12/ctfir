@@ -10,6 +10,7 @@ files = [
     'platform/linux/mod_d.cpp', 'platform/linux/mod_f.cpp',
     'platform/linux/mod_h.cpp', 'platform/linux/lnx_common.hpp',
     'core/model.cpp', 'core/report.cpp', 'core/log_attack.hpp',
+    'core/evt_xml.hpp',
 ]
 
 def corrupt_segments(literal):

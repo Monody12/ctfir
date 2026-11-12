@@ -407,8 +407,30 @@ void mod_autorun(ModuleCtx& ctx) {
             f.advice_id = "ADVICE.AUTORUN.REVIEW.001";
             ctx.add_finding(f);
         }
-        std::string b = to_lower(bootexec);
-        if (!b.empty() && b.find("autocheck") == std::string::npos) {
+        // MULTI_SZ 由 reg_get 以顿号拼接。默认唯一项为 "autocheck autochk *"；
+        // 附加条目（即便保留 autocheck）也报——这才是真实的启动劫持形态。
+        auto is_default_boot = [](std::string e) {
+            while (!e.empty() && (e.back() == '\0' || e.back() == ' ' || e.back() == '\r' || e.back() == '\n'))
+                e.pop_back();
+            size_t a = e.find_first_not_of(" \t");
+            if (a == std::string::npos) return true;
+            std::string t = to_lower(e.substr(a));
+            return t == "autocheck autochk *" || t == "autocheck autochk*";
+        };
+        bool unexpected_boot = false;
+        if (!bootexec.empty() && bootexec != "<binary>") {
+            const std::string delim = "、";
+            size_t pos = 0;
+            for (;;) {
+                size_t n = bootexec.find(delim, pos);
+                std::string part = (n == std::string::npos) ? bootexec.substr(pos)
+                                                            : bootexec.substr(pos, n - pos);
+                if (!part.empty() && !is_default_boot(part)) unexpected_boot = true;
+                if (n == std::string::npos) break;
+                pos = n + delim.size();
+            }
+        }
+        if (unexpected_boot) {
             Finding f;
             f.rule_id = "WIN.AUTORUN.BOOTEXECUTE.001";
             f.severity = "high";

