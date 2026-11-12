@@ -11,33 +11,10 @@ namespace fs = std::filesystem;
 
 namespace ctfir {
 
-static void utf8_to_wide(const std::string& u8, std::wstring& wide) {
-    const unsigned char* p = reinterpret_cast<const unsigned char*>(u8.data());
-    size_t i = 0, n = u8.size();
-    while (i < n) {
-        unsigned char c = p[i];
-        uint32_t cp; int len;
-        if (c < 0x80) { cp = c; len = 1; }
-        else if ((c & 0xE0) == 0xC0) { cp = c & 0x1F; len = 2; }
-        else if ((c & 0xF0) == 0xE0) { cp = c & 0x0F; len = 3; }
-        else if ((c & 0xF8) == 0xF0) { cp = c & 0x07; len = 4; }
-        else break;
-        if (i + static_cast<size_t>(len) > n) break;
-        for (int k = 1; k < len; ++k) cp = (cp << 6) | (p[i + k] & 0x3F);
-        if (len == 1) wide += static_cast<wchar_t>(cp);
-        else if (cp <= 0xFFFF) wide += static_cast<wchar_t>(cp);
-        else { cp -= 0x10000; wide += static_cast<wchar_t>(0xD800 + (cp >> 10));
-               wide += static_cast<wchar_t>(0xDC00 + (cp & 0x3FF)); }
-        i += static_cast<size_t>(len);
-    }
-}
-
 ReadResult read_text_file(const std::string& utf8_path, size_t max_bytes) {
     ReadResult r;
 #if defined(_WIN32)
-    std::wstring wide;
-    utf8_to_wide(utf8_path, wide);
-    std::ifstream f(wide.c_str(), std::ios::binary);
+    std::ifstream f(fs::u8path(utf8_path), std::ios::binary);
 #else
     std::ifstream f(utf8_path, std::ios::binary);
 #endif

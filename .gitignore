@@ -11,3 +11,5 @@ ci-pkg/
 ci-sums.txt
 ci-win.zip
 rel.json
+apps/win-gui/app.manifest
+apps/win-gui/app.rc

@@ -1,11 +1,11 @@
 # STATUS
 
-- 阶段：**v0.7.0 收口**——处置工作台 + CI 修复 + 宿主兼容警告 + `ctfir actions` 急救清单 + Linux musl 回归。GUI 仍只读，无修复按钮，不做 360/SFC。
-- 版本：kToolVersion **0.7.0** / 规则包 **6.0.1** / 检测点仍 **142**
-- 门禁：TEST_RESULTS **#41**（工作台）+ **#42**（CI / 兼容 / Linux）
-- 考点对照：个人赛安全防护 + 团队赛主机侧（`--profile full`）。Win7 RTM / x86 未交付，见 ADR-010。
+- 阶段：**v0.8.0 AD/Server 模拟覆盖**——成员服务器原 WIN.* 规则照常；GPP/NTDS/SYSVOL/凭据防护 + SAM hive/lsass dump。GUI 仍只读，无修复按钮。未打 `v0.8.0` tag（等 CI 绿）。
+- 版本：kToolVersion **0.8.0** / 规则包 **7.0.0** / 检测点 **189**
+- 门禁：TEST_RESULTS **#43**（Win7 42/42 HIT → VERIFY-GONE → cleanup 恢复）
+- 考点对照：个人赛安全防护 + 团队赛主机侧 + Windows Server/AD 文件注册表模拟。活 LDAP 仍 C，见 AD-SERVER-POINTS D 节。
 - 发布产物：Windows `D:\ctfir-build\cmake-build\`；Linux `D:\ctfir-build\linux\`。push `main` 走 `.github/workflows/ci.yml` 上传 Artifact；tag `v*` 发 Release。
-- 最后更新：2026-11-12 23:40（北京时间）
+- 最后更新：2026-11-13 01:00（北京时间）
 
 ## 已完成
 
@@ -21,6 +21,7 @@
 | v0.6.1 | 原 manual 全自动化；Win MySQL 路径；2008R2 XML / CentOS7 用户态替代；一条命令全绿 | #40 |
 | v0.7.0 | 处置工作台：分桶/排序/过滤/已填命令/现代 HTML+Win32 GUI；Startup 脚本可见；微软 Active Setup 进清单 | #41 |
 | v0.7.0+#42 | CI（windows-2022 + zip-utf8 + push Artifact）；doctor 兼容警告；`ctfir actions`；Linux 0.7.0 五发行版 42/42 | #42 |
+| v0.8.0 | WIN.AD.* + Server 凭据防护；Win7 analog 42/42；contest-fix 不关 Spooler；cleanup 恢复（Netlogon 实验室原值仍报） | #43 |
 
 ## 构建入口（固化）
 

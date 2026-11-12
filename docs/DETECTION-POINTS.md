@@ -1,4 +1,4 @@
-# DETECTION-POINTS — 检测点全表 v0.6（用例需求的唯一来源）
+# DETECTION-POINTS — 检测点全表 v0.8（用例需求的唯一来源）
 
 来源约定：`[A=T1053.005]` = MITRE ATT&CK；`[AR]`=Autoruns 覆盖位置清单；`[LY]`=Lynis/GScan 检查项类；`[CTF]`=ctfshow 应急题面考点。每个检测点 ↔ 规则 ID ↔ 用例行（tests/cases/*.tsv）。
 用例纪律：每点最少 1 正例 + 2 负例 + 3 变体；负例语料 = 四环境干净扫描 explained-findings.tsv。
@@ -131,4 +131,53 @@
 | 141 | MySQL binlog 明文取证 | [决赛指南·数据库日志] | MID.MYSQL.BINLOG.001 | STATEMENT 明文 CREATE FUNCTION / OUTFILE | ROW 格式无明文：只留证路径，需 mysqlbinlog 人工（如实 note） |
 | 142 | 编码变体（双重 URL 编码 / %2f 穿越） | 本表 | LOGATTACK 变体 | %2520UNION%2520SELECT、..%2f | 用例覆盖 |
 
-合计 142 检测点（132 + v0.6 增补 10，来源=决赛指南防守考点+玄机 WP+等保；R16 五点和日志取证补漏）↔ 用例库同步增补。新检测点必须：先入本表（含正负例设计）→ 实现 → 用例行 → 断言通过。
+| 143 | 密码历史为 0 | [技能赛] | WIN.BASE.PWDHIST.001 | uniquepw=0 | ≥5 静默 |
+| 144 | 密码永不过期 | [技能赛] | WIN.BASE.PWDAGE.001 | maxpwage=unlimited | 有期限静默 |
+| 145 | 显示上次登录用户名 | [技能赛] | WIN.BASE.LASTUSER.001 | DontDisplayLastUserName 缺/0 | =1 静默 |
+| 146 | 机器角色工作站/成员/DC | [PLAN W01] | WIN.AD.ROLE.001 | 任意机器 info | 清单默认隐藏 |
+| 147 | GPP cpassword | [CTF][A=T1552.006] | WIN.AD.GPP.CPASSWORD.001 | Groups.xml cpassword 非空 | 空属性/无字段不报；不解密 |
+| 148 | ntds.dit 副本 | [CTF][A=T1003.003] | WIN.AD.NTDS.COPY.001 | Temp\ntds.dit | 活库 Windows\NTDS\ntds.dit 不报 |
+| 149 | ntdsutil IFM | [CTF] | WIN.AD.IFM.001 | Active Directory\ntds.dit | 非 IFM 路径走 COPY |
+| 150 | SYSVOL 登录脚本 | [CTF][A=T1037] | WIN.AD.SYSVOL.SCRIPT.001 | SYSVOL\scripts\*.bat | 非 scripts/netlogon 不报 |
+| 151 | GPO 立即任务 | [CTF] | WIN.AD.GPO.TASK.001 | ScheduledTasks.xml Exec | 无 Command 不报 |
+| 152 | GPO scripts.ini | [CTF] | WIN.AD.GPO.SCRIPTINI.001 | 0CmdLine= | 空 CmdLine 不报 |
+| 153 | GPO 委派特权扩大 | [CTF] | WIN.AD.GPO.DELEG.001 | SeEnableDelegationPrivilege 含额外名 | 仅 Administrators SID 不报 |
+| 154 | DSRM 在线登录 | [CTF] | WIN.AD.DSRM.LOGON.001 | DsrmAdminLogonBehavior=2 | 缺键/0 不报 |
+| 155 | LDAP 不签名 | [技能赛] | WIN.AD.LDAP.NOSIGN.001 | LDAPServerIntegrity=0 | 键不存在不报（工作站） |
+| 156 | 域控上 Spooler | [PrintNightmare] | WIN.AD.SPOOLER.DC.001 | looks_like_dc + Start=auto | 工作站无 SYSVOL 不报 |
+| 157 | 域控未强制 SMB 签名 | [基线] | WIN.AD.SMBSIGN.001 | looks_like_dc + 未 Require=1 | 非 DC 特征不报 |
+| 158 | WDigest 明文 | [CTF] | WIN.BASE.WDIGEST.001 | UseLogonCredential=1 | 缺键不报（避免 Win7 默认误报） |
+| 159 | NTLMv1 | [等保] | WIN.BASE.NTLMV1.001 | LmCompatibilityLevel≤2 | ≥3 静默 |
+| 160 | PTH LATFP | [CTF] | WIN.BASE.LATFP.001 | =1 | 缺/0 静默 |
+| 161 | 存储 LM 哈希 | [等保] | WIN.BASE.NOLMHASH.001 | NoLmHash=0 | 1 静默 |
+| 162 | 匿名枚举 SAM | [技能赛] | WIN.BASE.RESTRICTANON.001 | RestrictAnonymousSAM=0 | 1 静默 |
+| 163 | Everyone 含匿名 | [技能赛] | WIN.BASE.EVERYONEANON.001 | =1 | 0 静默 |
+| 164 | SMB 明文口令 | [技能赛] | WIN.BASE.PLAINSMB.001 | EnablePlainTextPassword=1 | 0/缺 静默 |
+| 165 | PointAndPrint 免提权 | [PrintNightmare] | WIN.BASE.PNP.ELEV.001 | NoWarningNoElevationOnInstall=1 | 缺/0 静默 |
+| 166 | AlwaysInstallElevated | [CTF] | WIN.BASE.ALWAYSINST.001 | HKLM 或 HKCU=1 | 双 0 静默 |
+| 167 | WinRM 明文/Basic | [技能赛] | WIN.BASE.WINRM.UNENC.001 | AllowUnencrypted 或 AllowBasic=1 | 0/缺 静默 |
+| 168 | 防火墙配置文件关闭 | [PLAN W12] | WIN.BASE.FW.OFF.001 | EnableFirewall=0 | 全开静默；不自动开启 |
+| 169 | GPP 把账户加入本地管理员 | [CTF][A=T1098] | WIN.AD.GPP.ADMIN.001 | Groups.xml groupName=Administrators | 无 Administrators 不报 |
+| 170 | GPP Registry.xml 持久化 | [CTF] | WIN.AD.GPP.REG.001 | SYSVOL Registry.xml | 非 sysvol 不报 |
+| 171 | LDAP 通道绑定显式关闭 | [技能赛] | WIN.AD.LDAP.BIND.001 | LdapEnforceChannelBinding=0 | 缺键不报（避免全机误报） |
+| 172 | 计算机账户密码不再更换 | [基线] | WIN.AD.MACHPWD.001 | DisablePasswordChange=1 | 0 静默 |
+| 173 | 安全通道未签名加密 | [技能赛] | WIN.BASE.SEALCHAN.001 | SealSecureChannel=0 或 RequireSignOrSeal=0 | 两键均 1 静默 |
+| 174 | LDAP 客户端不签名 | [技能赛] | WIN.BASE.LDAPCLIENT.001 | LDAPClientIntegrity=0 | 缺/≥1 静默 |
+| 175 | UAC 管理员不提示 | [技能赛] | WIN.BASE.UAC.NOPROMPT.001 | ConsentPromptBehaviorAdmin=0 | 5 静默 |
+| 176 | 关闭 Ctrl+Alt+Del 登录注意 | [技能赛] | WIN.BASE.DISABLECAD.001 | DisableCAD=1 | 0/缺 静默 |
+| 177 | 非管理员可装打印驱动 | [PrintNightmare] | WIN.BASE.PNP.ADMIN.001 | RestrictDriverInstallationToAdministrators=0 | 1/缺 静默 |
+| 178 | RDP 安全层为 RDP | [技能赛] | WIN.BASE.RDP.SECLAYER.001 | SecurityLayer=0 | 1/2 静默 |
+| 179 | 缓存域登录数过大 | [基线] | WIN.BASE.CACHEDLOGON.001 | CachedLogonsCount≥50 | ≤10 静默 |
+| 180 | 超过登录时间不强制注销 | [技能赛] | WIN.BASE.FORCELOGOFF.001 | enableforcedlogoff=0 | 1 静默 |
+| 181 | NTLM 会话安全为 0 | [等保] | WIN.BASE.NTLMSEC.001 | NtlmMinClientSec=0 | 0x20080000 静默 |
+| 182 | PowerShell Unrestricted/Bypass | [CTF] | WIN.BASE.PS.UNRESTRICT.001 | 计算机策略 Unrestricted | Restricted 静默 |
+| 183 | SAM/SYSTEM/SECURITY 注册表副本 | [CTF][A=T1003.002] | WIN.AD.HIVE.COPY.001 | Temp\sam.save / IFM registry\SYSTEM | system32\config 活库不报 |
+| 184 | lsass 内存转储 | [CTF][A=T1003.001] | WIN.AD.LSASS.DMP.001 | Temp\lsass.dmp | lsass.exe 不报 |
+| 185 | GPP Files/Shortcuts.xml | [CTF] | WIN.AD.GPP.FILE.001 | SYSVOL Files.xml | 非 sysvol 不报 |
+| 186 | GPP Services.xml | [CTF] | WIN.AD.GPP.SVC.001 | SYSVOL Services.xml | 非 sysvol 不报 |
+| 187 | RDP 加密级别过低 | [技能赛] | WIN.BASE.RDP.ENCRYPT.001 | MinEncryptionLevel≤1 | 缺键/≥2 静默 |
+| 188 | Remote Registry 自动启动 | [技能赛] | WIN.BASE.REMOTEREG.001 | Start=AUTO | 手动/禁用静默 |
+| 189 | 网络访问按来宾模型 | [技能赛] | WIN.BASE.FORCEGUEST.001 | ForceGuest=1 | 0/缺 静默 |
+
+合计 **189** 检测点（142 + v0.8 AD/Server 47）。新检测点必须：先入本表 → 实现 → 单测/夹具 → 断言通过。
+域账户 LDAP、krbtgt、DCSync、黄金票、ADCS 仍不在本表（见 AD-SERVER-POINTS.md D 节，C 级）。

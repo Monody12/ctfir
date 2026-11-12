@@ -127,6 +127,24 @@ static const Advice kAdvices[] = {
  "【5-验证】重扫哈希与基线对齐。\n"
  "【6-复盘】写入时间与途径；关联账户/任务/进程事件还原时间线。"},
 
+{"ADVICE.HARDEN.001", "Windows/Linux 基线加固手册",
+ "【1-核实】对照赛题/等保要求读当前值（net accounts、reg query、auditpol、sshd_config）。非默认不必等于恶意。\n"
+ "【2-留证】导出原值（reg query / secedit / net accounts）写入报告。\n"
+ "【3-停用】先改可逆项（注册表 DWORD、net accounts）；观察业务/远程管理是否仍可用。\n"
+ "【4-清除】按报告已填命令把策略收到基线；域环境应改 GPO 而不是只改本机。\n"
+ "【5-验证】重跑 ctfir，对应 WIN.BASE / LNX.BASE 项消失或降级。\n"
+ "【6-复盘】域控上的 LDAP/SMB 签名、Spooler、NTLMv1 影响全域；改完 gpupdate /force 并抽查成员机。"},
+
+{"ADVICE.AD.REVIEW.001", "域控 / SYSVOL / NTDS 处置手册",
+ "【1-核实】确认本机角色：ProductType LanmanNT=DC，ServerNT=成员服务器，WinNT=工作站。"
+ "本地 SAM 不是 Domain Admins。GPP XML 的 cpassword 用 gpp-decrypt 可解，但不要把明文写进提交物。\n"
+ "【2-留证】复制 SYSVOL 异常 XML/脚本、ntds.dit 副本、IFM 目录、SAM/SYSTEM.save、lsass.dmp 到证据区；记录路径与哈希。不要用 mimikatz/secretsdump 把哈希打进报告。\n"
+ "【3-停用】域控上无打印则停 Spooler；DSRM 登录行为改回 0；LDAPServerIntegrity=2。\n"
+ "【4-清除】删除 GPP 含 cpassword 的 XML、Files/Services/Registry.xml、GPO 立即任务、SYSVOL 恶意脚本、ntds.dit 副本、IFM、sam.save 与 lsass.dmp；"
+ "轮换被 GPP 写入的本地管理员口令；若确认 NTDS 被拷走，按应急预案两次重置 krbtgt。\n"
+ "【5-验证】重扫 WIN.AD.* 文件项消失；\\\\<domain>\\SYSVOL 不再有 cpassword；ntdsutil 临时目录清空。\n"
+ "【6-复盘】DCSync/委派/ADCS/黄金票据需要 LDAP 与事件 4662/4769，本工具不覆盖——用 AD 工具与安全日志人工查。"},
+
 {"ADVICE.EVENTLOG.REVIEW.001", "登录/账户事件处置手册",
  "【1-核实】Top 失败 IP 是否内网授权资产；4624 登录类型（2=控制台 3=网络 10=RDP）与账户是否合理；"
  "4720/4732 操作者是谁。\n"

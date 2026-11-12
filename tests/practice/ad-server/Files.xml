@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Files clsid="{215B2E53-57CE-475c-80FE-9EEC14635851}">
+  <File clsid="{50BE44C5-0502-4a67-82F5-2BB2E811D62D}" name="ctfir-marker-drop.bat"
+        image="0" changed="2026-11-13 00:00:00" uid="{00000000-0000-0000-0000-00000000C0E1}">
+    <Properties action="U" fromPath="\\ctfir.local\netlogon\ctfir-marker.bat"
+                targetPath="C:\Windows\Temp\ctfir-marker-gpo.bat"/>
+  </File>
+</Files>

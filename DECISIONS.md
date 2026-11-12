@@ -2,6 +2,18 @@
 
 格式：编号 / 背景 / 决策 / 理由与依据 / 影响与回退。
 
+## ADR-011 Windows Server / AD 域控覆盖边界（2026-11-12）
+
+- 背景：用户问遇到 Windows Server 与 AD 域控题时工具能否识别；要求把知识点找全、联网校对、在授权 VM 种夹具验证，识别失败则改工具循环直到能识别并恢复环境。
+- 决策：
+  1. **成员服务器上原 Windows 规则全部适用**（账户/持久化/IIS/RDP/SMB1 等）。不是 Win7 专用。
+  2. **新增 WIN.AD.\* + Server 凭据防护**（GPP cpassword、NTDS 副本/IFM、SYSVOL 脚本、GPO 立即任务/scripts.ini/委派、DSRM、LDAP 签名、DC 上 Spooler/SMB 签名、WDigest/NTLMv1/LATFP 等）。不解密 cpassword，不解析 ntds.dit 哈希。
+  3. **不查询 LDAP**。Domain Admins、krbtgt、DCSync ACL、非约束委派、ADCS、黄金票据仍为 C 级，手册给出手工命令。PLAN W01「域账户 ≠ 本地 SAM」维持。
+  4. **授权 Win7 VM 不能变成 DC**。用 `ctfir-marker` 文件树模拟 SYSVOL/IFM + 注册表；测后 `cleanup.cmd` 恢复。不关 Spooler、不开防火墙、不动 JW2026-WIN7-01。
+  5. `looks_like_dc()` = ProductType=LanmanNT 或 NTDS 服务或 `Windows\NTDS\ntds.dit` 或 SYSVOL 目录/共享。工作站仅在种了 SYSVOL 夹具时才会报 Spooler/SMB 签名。
+  6. **第二轮补漏（仍不连 LDAP）**：SAM/SYSTEM hive 副本、lsass.dmp、GPP Files/Services.xml、RDP MinEncryptionLevel、RemoteRegistry AUTO、ForceGuest。活库 `system32\config` 不报。Win7 夹具 42/42 HIT → contest-fix VERIFY-GONE → cleanup 恢复（Netlogon 两项为实验机原值，检测器正确）。
+- 回退：删除 `mod_w5.cpp` 注册即回到 v0.7 行为。
+
 ## ADR-010 考试兼容与「急救箱」边界（2026-11-12）
 
 - 背景：用户问 Win7 非 SP1 / 32 位 x86 会否出现在经纬杯决赛，以及能否做成 360 式离线系统急救箱。

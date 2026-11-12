@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Groups clsid="{3125E937-EB31-4E64-92FF-4EDB22D13967}">
+  <User clsid="{DF5F1855-51E5-4d37-BEB0-E863B2D080E0}" name="ctfir-marker-gpp" image="2"
+        changed="2026-11-12 12:00:00" uid="{00000000-0000-0000-0000-00000000C0DE}">
+    <Properties action="U" fullName="" description="ctfir-marker"
+                cpassword="ctfirMarkerCpasswordValueAAAA"
+                changeLogon="0" noChange="1" neverExpires="1" acctDisabled="0"
+                userName="ctfir-marker-gpp"/>
+  </User>
+  <Group clsid="{6D4A79E4-529C-11D2-AADF-00C04F79F83A}" name="Administrators"
+         image="2" changed="2026-11-13 00:00:00" uid="{00000000-0000-0000-0000-00000000C0DF}">
+    <Properties action="U" newName="" description="ctfir-marker"
+                groupName="Administrators" groupSid=""
+                userName="ctfir-marker-gpp"/>
+  </Group>
+</Groups>

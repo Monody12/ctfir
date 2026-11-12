@@ -114,6 +114,7 @@ static int cmd_doctor() {
     std::printf(" \"os_arch\":\"%s\",\n", json_escape(detect_os_arch()).c_str());
     std::printf(" \"binary_arch\":\"%s\",\n", json_escape(hc.binary_arch).c_str());
     std::printf(" \"privilege\":\"%s\",\n", json_escape(detect_privilege()).c_str());
+    std::printf(" \"product_type\":\"%s\",\n", json_escape(detect_product_type()).c_str());
     std::printf(" \"compat\":\"%s\",\n", json_escape(hc.level).c_str());
     std::printf(" \"compat_note\":\"%s\",\n", json_escape(hc.note).c_str());
     std::printf(" \"schema_version\":%d,\n", kSchemaVersion);
@@ -143,7 +144,7 @@ static int cmd_help() {
         "                  复制已填命令人工执行（停用先于删除；决赛持久化须删除）\n"
         "10. 复查:         处置后重扫 + ctfir diff --a 旧 --b 新 确认变化\n"
         "\n个人赛/团队赛主机侧都用 --profile full（quick 不含 Web/中间件，团队赛会漏点）。\n"
-        "速查手册: ctfir playbook <user|task|service|process|startup|hosts|sshkey|cron|profile|preload|webshell|hash|log>\n"
+        "速查手册: ctfir playbook <user|task|service|process|startup|hosts|sshkey|cron|profile|preload|webshell|hash|log|ad|harden>\n"
         "红线: GUI 无修复按钮，不做 SFC/DISM/一键系统修复。CLI 可选 ctfir fix（白名单+备份）。\n",
         kToolVersion);
     return 0;
@@ -164,12 +165,15 @@ static int cmd_playbook(int argc, char** argv) {
         {"process", "ADVICE.MINER.REVIEW.001"},  {"miner", "ADVICE.MINER.REVIEW.001"},
         {"hash", "ADVICE.HASH.BASELINE.001"},    {"baseline", "ADVICE.HASH.BASELINE.001"},
         {"log", "ADVICE.EVENTLOG.REVIEW.001"},   {"eventlog", "ADVICE.EVENTLOG.REVIEW.001"},
+        {"ad", "ADVICE.AD.REVIEW.001"},          {"dc", "ADVICE.AD.REVIEW.001"},
+        {"sysvol", "ADVICE.AD.REVIEW.001"},      {"ntds", "ADVICE.AD.REVIEW.001"},
+        {"gpp", "ADVICE.AD.REVIEW.001"},         {"harden", "ADVICE.HARDEN.001"},
     };
     if (argc < 3) {
         std::fprintf(stderr,
             "用法: ctfir playbook <类型>\n"
             "类型: user logonhide task service startup hosts sshkey cron profile preload "
-            "webshell process miner hash log\n");
+            "webshell process miner hash log ad harden\n");
         return 3;
     }
     std::string t = to_lower(argv[2]);

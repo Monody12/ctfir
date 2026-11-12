@@ -29,5 +29,23 @@
 | 提权痕迹 | LNX.SUID.UNEXPECTED / LNX.CAPS | user | 白名单外即人工核实 |
 | 弱口令爆破 | 4625 Top IP / secure Failed | log | 时间窗内集中失败 |
 | 处置后复查 | ctfir diff --a 处置前 --b 处置后 | — | resolved=已清除 added=新出现 |
+| 本机是不是域控 | WIN.AD.ROLE.001 | ad | ProductType：WinNT 工作站 / ServerNT 成员 / LanmanNT 域控；本地 SAM ≠ Domain Admins |
+| GPP cpassword | WIN.AD.GPP.CPASSWORD.001 | ad | SYSVOL XML 含 cpassword；删文件并轮换口令，工具不落明文 |
+| GPP 加本地管理员 / Registry / Files / Services | WIN.AD.GPP.ADMIN / REG / FILE / SVC | ad | 删 XML；Files 投放与 Services 改服务都是域持久化 |
+| ntds.dit 副本 / IFM | WIN.AD.NTDS.COPY / IFM | ad | 只报文件；活库 `Windows\NTDS\ntds.dit` 不告警 |
+| SAM/SYSTEM.save / lsass.dmp | WIN.AD.HIVE.COPY / LSASS.DMP | ad | `reg save` 与 MiniDump 残留；不解析哈希 |
+| SYSVOL 登录脚本 / GPO 立即任务 | WIN.AD.SYSVOL.SCRIPT / GPO.TASK / SCRIPTINI | ad | 域用户可读，gpupdate 后全域执行 |
+| GPO 委派特权 | WIN.AD.GPO.DELEG.001 | ad | GptTmpl.inf SeEnableDelegationPrivilege 多出来的 SID |
+| DSRM 在线登录 / LDAP 不签名 / 通道绑定 | WIN.AD.DSRM / LDAP.NOSIGN / LDAP.BIND | harden | 改回 0 / Integrity=2 / Binding=2 |
+| 域控 Spooler / SMB 签名 | WIN.AD.SPOOLER.DC / SMBSIGN | harden | 仅 looks_like_dc（SYSVOL/NTDS/LanmanNT）才报 |
+| 机器账户密码 / 安全通道 | WIN.AD.MACHPWD / WIN.BASE.SEALCHAN | harden | DisablePasswordChange=0；Seal=1 |
+| WDigest / NTLMv1 / PTH | WIN.BASE.WDIGEST / NTLMV1 / LATFP | harden | UseLogonCredential=0；LmCompatibilityLevel=5；LATFP=0 |
+| 匿名 SAM / Everyone 匿名 / SMB 明文 / 来宾模型 | WIN.BASE.RESTRICTANON / EVERYONEANON / PLAINSMB / FORCEGUEST | harden | 技能赛模块 A 高频 |
+| PrintNightmare PointAndPrint / AlwaysInstallElevated / WinRM 明文 | WIN.BASE.PNP.ELEV / ALWAYSINST / WINRM.UNENC | harden | 注册表回 0 |
+| RDP 加密 / SecurityLayer / RemoteRegistry | WIN.BASE.RDP.ENCRYPT / RDP.SECLAYER / REMOTEREG | harden | MinEncryptionLevel=3；SecurityLayer=2；服务禁用 |
+| 密码历史 / 永不过期 / 显示上次用户名 / 防火墙关 | WIN.BASE.PWDHIST / PWDAGE / LASTUSER / FW.OFF | harden | 防火墙不自动开（防切断 SSH） |
+| Domain Admins / krbtgt / DCSync / 委派 / ADCS / 黄金票 | — | ad | **C 级**：需 LDAP/事件/内存；`ctfir playbook ad` 写了手工命令 |
+
+完整对照见 [AD-SERVER-POINTS.md](AD-SERVER-POINTS.md)。
 
 **三不变**：工具只读；PASS≠安全；未完成检查如实列出。

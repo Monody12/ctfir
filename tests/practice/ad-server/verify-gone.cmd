@@ -1,0 +1,73 @@
+@echo off
+setlocal EnableExtensions
+rem After contest-fix, planted AD rule IDs must be absent. JW2026 IDs may remain.
+set SESS=%~1
+if "%SESS%"=="" set SESS=C:\ctfir-test\out-ad-fix
+set F=%SESS%\findings.json
+if not exist "%F%" (
+  echo MISSING %F%
+  exit /b 2
+)
+set FAIL=0
+for %%R in (
+  WIN.AD.GPP.CPASSWORD.001
+  WIN.AD.GPP.ADMIN.001
+  WIN.AD.GPP.REG.001
+  WIN.AD.GPP.FILE.001
+  WIN.AD.GPP.SVC.001
+  WIN.AD.HIVE.COPY.001
+  WIN.AD.LSASS.DMP.001
+  WIN.AD.NTDS.COPY.001
+  WIN.AD.IFM.001
+  WIN.AD.SYSVOL.SCRIPT.001
+  WIN.AD.GPO.TASK.001
+  WIN.AD.GPO.SCRIPTINI.001
+  WIN.AD.GPO.DELEG.001
+  WIN.AD.DSRM.LOGON.001
+  WIN.AD.LDAP.NOSIGN.001
+  WIN.AD.LDAP.BIND.001
+  WIN.AD.MACHPWD.001
+  WIN.AD.SPOOLER.DC.001
+  WIN.BASE.WDIGEST.001
+  WIN.BASE.NTLMV1.001
+  WIN.BASE.LATFP.001
+  WIN.BASE.NOLMHASH.001
+  WIN.BASE.RESTRICTANON.001
+  WIN.BASE.EVERYONEANON.001
+  WIN.BASE.PLAINSMB.001
+  WIN.BASE.PNP.ELEV.001
+  WIN.BASE.ALWAYSINST.001
+  WIN.BASE.WINRM.UNENC.001
+  WIN.BASE.SEALCHAN.001
+  WIN.BASE.LDAPCLIENT.001
+  WIN.BASE.UAC.NOPROMPT.001
+  WIN.BASE.DISABLECAD.001
+  WIN.BASE.PNP.ADMIN.001
+  WIN.BASE.RDP.SECLAYER.001
+  WIN.BASE.CACHEDLOGON.001
+  WIN.BASE.FORCELOGOFF.001
+  WIN.BASE.NTLMSEC.001
+  WIN.BASE.PS.UNRESTRICT.001
+  WIN.BASE.RDP.ENCRYPT.001
+  WIN.BASE.REMOTEREG.001
+  WIN.BASE.FORCEGUEST.001
+) do (
+  findstr /c:"%%R" "%F%" >nul
+  if not errorlevel 1 (
+    echo STILL %%R
+    set FAIL=1
+  ) else (
+    echo GONE %%R
+  )
+)
+echo ---- JW2026 should remain ----
+findstr /c:"WIN.ACC.GUESTADMIN.001" "%F%" >nul
+if errorlevel 1 (echo MISS JW GuestAdmin & set FAIL=1) else echo HIT  JW GuestAdmin
+findstr /c:"WIN.AUTORUN.IFEO.001" "%F%" >nul
+if errorlevel 1 (echo MISS JW IFEO & set FAIL=1) else echo HIT  JW IFEO
+if %FAIL%==1 (
+  echo VERIFY-GONE FAIL
+  exit /b 1
+)
+echo VERIFY-GONE PASS
+exit /b 0

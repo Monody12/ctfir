@@ -9,4 +9,5 @@ std::string detect_os_name();     // 如 "Windows 7" / "CentOS 7"
 std::string detect_os_version();  // 如 "6.1.7601 SP1" / "3.10.0-1160"
 std::string detect_os_arch();     // x64 / x86 / x86_64
 std::string detect_privilege();   // "admin" / "user" / "root"
+std::string detect_product_type(); // Windows: WinNT/ServerNT/LanmanNT；Linux 空
 }

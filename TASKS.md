@@ -3,6 +3,12 @@
 状态枚举：TODO / IN_PROGRESS / BLOCKED / IMPLEMENTED_NOT_TESTED / PASSED / FAILED / DEFERRED
 来源：PLAN.md §13（T25 为 v0.3 新增）。验收定义见 PLAN 对应行。
 
+**v0.8.0（2026-11-13）**：Windows Server / AD 文件与注册表模拟。见 TEST_RESULTS #43、ADR-011。GUI 无写动作。JW2026-WIN7-01 **待练题，勿清**。
+
+| ID | 任务 | 依赖 | 状态 | 证据 |
+|---|---|---|---|---|
+| T28 | Server/AD 考点覆盖（GPP/NTDS/SYSVOL/凭据防护 + hive/lsass） | T27 | **PASSED** | TEST_RESULTS #43：Win 96/96、Linux 92/92；Win7 42/42 HIT；VERIFY-GONE PASS；cleanup 恢复 |
+
 **v0.7.0（2026-11-12）**：处置工作台（个人防护 / 团队综合 / 全部）。见 TEST_RESULTS #41。GUI 无写动作。JW2026-WIN7-01 **待练题，勿清**。
 
 | ID | 任务 | 依赖 | 状态 | 证据 |
@@ -55,5 +61,6 @@
 | 2026-11-09 | centos-ir-lab 容器内 ctfir-marker 全套(UID0/cron/hosts/webshell/shadow/caps/timer/at/基线) | LNX 新规则正例 | 已清理复验(15/15) |
 | 2026-11-09 | A7C9 夹具(外部AI部署, 仅只读断言未动) | 八项对接 | 保留待用户 Cleanup 决定 |
 | 2026-11-12 | JW2026-WIN7-01 练习套（用户 ctfir-marker$、Guest→Admins、Run/任务/服务/IFEO/登录脚本、hosts 10.66.0.88、portproxy 13389、Temp/桌面文件+ADS、共享、EnableLUA=0、LimitBlankPasswordUse=0） | 经纬杯安全防护赛 Win7 主机题 | **待练题，勿清**；还原用 `C:\ctfir-test\jw2026_win7_01_cleanup.cmd` |
+| 2026-11-13 | AD-SERVER-01（SYSVOL GPP/GptTmpl、ntds 副本/IFM、sam.save、lsass.dmp、DSRM/LDAP/WDigest 等注册表） | v0.8 Server/AD analog | **已清理**；JW2026 未动；Spooler 仍 RUNNING；Netlogon DisablePasswordChange=1 / SealSecureChannel=0 为实验室原值 |
 
 备注：M0 在 Win7 VM 仅建立 `C:\ctfir-test\` 部署目录并运行只读 PoC（未建夹具）。

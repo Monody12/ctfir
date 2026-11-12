@@ -52,8 +52,15 @@ Bucket bucket_of(const std::string& rule_id) {
     const std::string& r = rule_id;
     if (has(r, "INVENTORY") || has(r, "TASK.FACT") || has(r, "TIMER.FACT") ||
         has(r, "FILES.RECENT") || has(r, "BASE.RECENT") || has(r, "FILES.TEMPEXE") ||
-        has(r, "CMDRECENT"))
+        has(r, "CMDRECENT") || has(r, "WIN.AD.ROLE"))
         return Bucket::Inventory;
+
+    if (has(r, "AD.GPP") || has(r, "AD.NTDS") || has(r, "AD.IFM") ||
+        has(r, "AD.SYSVOL") || has(r, "AD.GPO") || has(r, "AD.HIVE") ||
+        has(r, "AD.LSASS"))
+        return Bucket::Clear;
+    if (has(r, "WIN.AD."))
+        return Bucket::Harden;
 
     if (has(r, "WEB.LOGPOST") || has(r, "WEB.LOGATTACK") || has(r, ".EVT.") ||
         has(r, ".LOG.") || has(r, "TRACE.") || has(r, "PSHIST") ||
@@ -195,6 +202,53 @@ static const struct TitleRow { const char* id; const char* title; } kTitles[] = 
     {"WIN.FW.WRITABLEAPP.001", "防火墙放行可写程序"},
     {"WIN.SHARE.NONDEFAULT.001", "非默认共享"},
     {"WIN.DRV.WRITABLE.001", "驱动落在可写路径"},
+    {"WIN.AD.ROLE.001", "机器角色（工作站/成员服务器/域控）"},
+    {"WIN.AD.GPP.CPASSWORD.001", "GPP cpassword 口令泄露"},
+    {"WIN.AD.GPP.ADMIN.001", "GPP 把账户加入本地管理员"},
+    {"WIN.AD.GPP.REG.001", "GPP Registry.xml 注册表持久化"},
+    {"WIN.AD.GPP.FILE.001", "GPP Files/Shortcuts.xml 投放文件"},
+    {"WIN.AD.GPP.SVC.001", "GPP Services.xml 改服务"},
+    {"WIN.AD.HIVE.COPY.001", "SAM/SYSTEM/SECURITY 注册表副本"},
+    {"WIN.AD.LSASS.DMP.001", "lsass 内存转储文件"},
+    {"WIN.AD.NTDS.COPY.001", "ntds.dit 数据库副本"},
+    {"WIN.AD.IFM.001", "ntdsutil IFM 导出目录"},
+    {"WIN.AD.SYSVOL.SCRIPT.001", "SYSVOL 登录脚本"},
+    {"WIN.AD.GPO.TASK.001", "GPO 立即任务持久化"},
+    {"WIN.AD.GPO.SCRIPTINI.001", "GPO scripts.ini 登录脚本"},
+    {"WIN.AD.GPO.DELEG.001", "GPO 委派特权被扩大"},
+    {"WIN.AD.DSRM.LOGON.001", "DSRM 管理员可在线登录"},
+    {"WIN.AD.LDAP.NOSIGN.001", "LDAP 签名关闭"},
+    {"WIN.AD.LDAP.BIND.001", "LDAP 通道绑定关闭"},
+    {"WIN.AD.MACHPWD.001", "计算机账户密码不再更换"},
+    {"WIN.AD.SPOOLER.DC.001", "域控上打印后台仍启用"},
+    {"WIN.AD.SMBSIGN.001", "域控未强制 SMB 签名"},
+    {"WIN.BASE.WDIGEST.001", "WDigest 保存明文口令"},
+    {"WIN.BASE.NTLMV1.001", "仍允许 NTLMv1/LM"},
+    {"WIN.BASE.LATFP.001", "本地管理员 PTH 过滤器关闭"},
+    {"WIN.BASE.NOLMHASH.001", "仍存储 LM 哈希"},
+    {"WIN.BASE.RESTRICTANON.001", "允许匿名枚举 SAM"},
+    {"WIN.BASE.EVERYONEANON.001", "Everyone 含匿名用户"},
+    {"WIN.BASE.PLAINSMB.001", "SMB 明文口令"},
+    {"WIN.BASE.PNP.ELEV.001", "PointAndPrint 免提权"},
+    {"WIN.BASE.ALWAYSINST.001", "AlwaysInstallElevated"},
+    {"WIN.BASE.WINRM.UNENC.001", "WinRM 允许未加密"},
+    {"WIN.BASE.FW.OFF.001", "Windows 防火墙已关闭"},
+    {"WIN.BASE.PWDHIST.001", "密码历史长度为 0"},
+    {"WIN.BASE.PWDAGE.001", "密码永不过期"},
+    {"WIN.BASE.LASTUSER.001", "登录界面显示上次用户名"},
+    {"WIN.BASE.SEALCHAN.001", "安全通道未签名加密"},
+    {"WIN.BASE.LDAPCLIENT.001", "LDAP 客户端不签名"},
+    {"WIN.BASE.UAC.NOPROMPT.001", "UAC 管理员不提示"},
+    {"WIN.BASE.DISABLECAD.001", "关闭 Ctrl+Alt+Del 登录注意"},
+    {"WIN.BASE.PNP.ADMIN.001", "非管理员可装打印驱动"},
+    {"WIN.BASE.RDP.SECLAYER.001", "RDP 未使用 TLS 安全层"},
+    {"WIN.BASE.CACHEDLOGON.001", "缓存域登录数过大"},
+    {"WIN.BASE.FORCELOGOFF.001", "超过登录时间不强制注销"},
+    {"WIN.BASE.NTLMSEC.001", "NTLM 会话安全为 0"},
+    {"WIN.BASE.PS.UNRESTRICT.001", "PowerShell 执行策略 Unrestricted"},
+    {"WIN.BASE.RDP.ENCRYPT.001", "RDP 加密级别过低"},
+    {"WIN.BASE.REMOTEREG.001", "Remote Registry 自动启动"},
+    {"WIN.BASE.FORCEGUEST.001", "网络访问按来宾模型"},
     {"LNX.ACC.UID0.001", "非 root 的 UID 0 账户"},
     {"LNX.ACC.DUPUID.001", "重复 UID"},
     {"LNX.ACC.GID0.001", "GID 0 含非 root 成员"},

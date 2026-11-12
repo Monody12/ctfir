@@ -45,4 +45,6 @@ std::string detect_privilege() {
     return geteuid() == 0 ? "root" : "user";
 }
 
+std::string detect_product_type() { return ""; }
+
 } // namespace ctfir

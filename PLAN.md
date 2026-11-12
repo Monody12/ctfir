@@ -254,7 +254,7 @@ Linux CLI ───┘          |
 
 | 模块 /优先 | 来源/API与输出 | 判定与误报边界 | 权限/失败 | 最低测试与建议 |
 |---|---|---|---|---|
-| W01账户/管理员组 A | NetUserEnum/NetUserGetInfo、NetLocalGroupGetMembers；按SID识别本地管理员组而非英文名称；SID/RID、禁用状态、组关系 | 新增/额外管理员、异常权限组合；账户以`$`结尾不是恶意充分条件；改名内置账户不能靠名字识别 | 域控制器与域账户不等同本地SAM；访问拒绝说明范围 | 正：测试额外管理员；负：改名Administrator、授权运维账户；fault：权限拒绝。建议核授权/日志，非自动删 |
+| W01账户/管理员组 A | NetUserEnum/NetUserGetInfo、NetLocalGroupGetMembers；按SID识别本地管理员组而非英文名称；SID/RID、禁用状态、组关系 | 新增/额外管理员、异常权限组合；账户以`$`结尾不是恶意充分条件；改名内置账户不能靠名字识别 | 域控制器与域账户不等同本地SAM；访问拒绝说明范围。v0.8 已用文件/注册表模拟覆盖 GPP/NTDS 副本/SYSVOL/凭据防护；活 LDAP 域组仍 C | 正：测试额外管理员；负：改名Administrator、授权运维账户；fault：权限拒绝。建议核授权/日志，非自动删 |
 | W02登录界面隐藏 A | `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\SpecialAccounts\UserList`；与W01对照，列值类型/数据 | UI隐藏≠底层SAM隐藏；合法服务账户可隐藏 | 键不存在可完成无该配置；读拒绝不同于不存在 | 正：夹具隐藏标记；负：无键/正常可见账户；fault：拒绝。建议保留原值后人工确认 |
 | W03任务 A | Task Scheduler COM 递归目录，含隐藏任务查询；XML、动作、触发器、主体、启用状态、任务路径 | 临时/可写路径、异常参数与权限组合；备份/安装任务可能相同 | COM未启动、损坏XML、子目录拒绝逐项计数，不能只扫根文件夹 | 正：无害marker任务；负：系统任务/合法备份；fault：服务不可用。导出XML建议、不要禁用 |
 | W04服务 A | SCM枚举/QueryServiceConfig，启动类型、账号、ImagePath、依赖；驱动先基础条目 | 可写路径/异常参数/非基线服务；第三方服务正常，不默认全报警 | 不要求停止/启动服务；部分配置拒绝返回受限 | 正：测试服务配置夹具；负：微软/合法第三方；fault：拒绝。确认后人工处置说明 |
@@ -265,7 +265,7 @@ Linux CLI ───┘          |
 | W09基础事件日志 B可裁 | Event Log API有限通道/时间窗口、记录ID、原始时区 | 4624/4625登录成功/失败Top来源IP（v0.3补首规则）、账户/任务/服务线索，不自动还原完整攻击链 | 各系统通道不同，日志缺失≠无事件 | 正：合成事件夹具；负：正常登录/轮转；fault：拒绝。保存线索，不清日志 |
 | W10 WMI持久化 C | 过滤器/消费者/绑定只读关联 | 企业监控也合法 | 超时/服务缺失 | 后续独立模块，不在MVP伪称覆盖 |
 | W11深层SAM/RID异常 C | 多源映射/离线元数据研究 | 不等于W02，不能保证公开API看见一切 | 不绕ACL、不抓密码hash | 后续可信离线模式评审 |
-| W12 DNS/防火墙/RDP/关键策略 C | 本地配置/适配器API，域策略边界 | 非默认配置不必恶意 | 不主动联网，不改策略 | 后续增强，不为赶期自动硬化 |
+| W12 DNS/防火墙/RDP/关键策略 C | 本地配置/适配器API，域策略边界 | 非默认配置不必恶意 | 不主动联网，不改策略 | v0.8 已覆盖可本地读取的防火墙/RDP/NTLM/LDAP 签名等注册表项；活域策略/DNS 仍 C。不为赶期自动硬化 |
 | W13 Web/日志 A（v0.3新增） | web根定位（IIS inetpub、phpstudy/xampp常见路径）、wwwroot下.php/.asp/.aspx/.jsp静态特征（eval/assert/base64_decode链、Execute Request、Runtime.exec）；IIS/Apache/Nginx日志POST Top IP、404扫描、sqlmap UA | 特征命中≠定罪，需人工复核；合法框架文件可能命中，白名单按hash+路径 | 目录过大限预算SKIPPED；日志轮转分卷逐个计 | 正：无害marker特征文件；负：正常业务php/正常访问日志；fault：目录拒绝。只读，不删webshell |
 
 Windows XML解析如用系统MSXML需动态探测已安装版本并禁用DTD/外部实体，不能要求现场装库；首版可直接保存COM返回XML并使用COM对象读取所需字段，避免引入未验证XML依赖。命令行路径解析不得用简单按空格切分造成带引号/环境变量误判；保留原文与“解析不确定”状态。

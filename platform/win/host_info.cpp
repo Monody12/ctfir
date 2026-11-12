@@ -45,6 +45,11 @@ std::string detect_os_arch() {
          : si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL ? "x86" : "unknown";
 }
 
+std::string detect_product_type() {
+    return reg_sz(HKEY_LOCAL_MACHINE,
+        L"SYSTEM\\CurrentControlSet\\Control\\ProductOptions", L"ProductType");
+}
+
 std::string detect_privilege() {
     BOOL elevated = FALSE;
     HANDLE tok = nullptr;

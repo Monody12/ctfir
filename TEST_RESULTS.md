@@ -615,3 +615,42 @@ ld.so.preload 夹具引起的 `cannot be preloaded` 是正例副作用，夹具 
 | linux/ctfir_tests | 7059A3C004309837F1A870CC4F02824E68E01BFE4D72963B64FF3FD7C0E0D1F2 | 3191568 |
 
 Win7 已部署 `C:\ctfir-test\ctfir.exe` / `ctfir-gui.exe` 本轮产物。JW2026-WIN7-01 夹具待练题，勿清。
+
+---
+
+## 2026-11-13 v0.8.0（#43：Windows Server / AD 模拟覆盖）
+
+**范围**：用户问遇到 Windows Server / AD 域控题时工具能否识别；要求把知识点找全、联网校对、在授权 VM 种夹具、识别失败则改工具循环，直到能识别并恢复环境。决策见 ADR-011。
+
+**环境**：开发机 Win11 x64 VS2022 v143；授权实验机 Win7 Ultimate SP1 x64 `192.168.0.14`（ProductType=WinNT，**不能**升域控）。JW2026-WIN7-01 待练题勿清。
+
+### 能识别什么 / 不能识别什么
+
+- **成员服务器**：原 WIN.* 账户/持久化/IIS/RDP/SMB1 等照常。不是 Win7 专用。
+- **域控文件与凭据防护（本机可读）**：GPP cpassword / Groups 加管理员 / Registry / Files / Services.xml、ntds.dit 副本与 IFM、SAM/SYSTEM.save、lsass.dmp、SYSVOL 脚本、GPO 立即任务/scripts.ini/委派、DSRM、LDAP 签名与通道绑定、DC 上 Spooler/SMB 签名、WDigest/NTLMv1/LATFP 等。
+- **活 AD DS（C，需 LDAP/内存）**：Domain Admins 成员、krbtgt、DCSync ACL、非约束委派、ADCS ESC、黄金票、骨架密钥。`ctfir playbook ad` 给手工命令。不解密 cpassword、不解析哈希。
+
+### 夹具循环（`tests/practice/ad-server/`）
+
+1. `install.cmd` 种 `ctfir-marker` SYSVOL/NTDS/hive/lsass + 注册表。不关 Spooler、不开防火墙、不动 JW2026。
+2. `scan.cmd` + `verify.cmd`：**42 HIT / 0 MISS**（VERIFY PASS）。含第二轮补漏：HIVE.COPY、LSASS.DMP、GPP.FILE、GPP.SVC、RDP.ENCRYPT、REMOTEREG、FORCEGUEST。
+3. `fix.cmd`（比赛口径，不关 Spooler）+ `scan-fix.cmd` + `verify-gone.cmd`：**VERIFY-GONE PASS**；JW GuestAdmin + IFEO 仍 HIT；Spooler RUNNING AUTO。
+4. `cleanup.cmd`（Win7 标签前 8 字符唯一：`rst_dw`/`rst_sz`）恢复 orig。
+5. 清理后：SYSVOL/sam.save/lsass.dmp/ntds 均 ABSENT；MinEncryptionLevel=2、ForceGuest=0、RemoteRegistry DEMAND_START、SecurityLayer=1、CachedLogonsCount=10、NoLmHash=1、RestrictAnonymousSAM=1。JW2026 仍在。
+6. **实验室原值（不是残留）**：`DisablePasswordChange=1`、`SealSecureChannel=0`（orig flag PRESENT 即这些值）。contest-fix 曾把它们改安全；cleanup 写回实验室原值，故 MACHPWD + SEALCHAN 仍报。检测器正确，不改实验机 Netlogon。
+
+### 单测与二进制（2026-11-13）
+
+- Windows `ctfir_tests.exe`：**96/96 PASS**。dumpbin 依赖：KERNEL32 SHELL32 ole32 OLEAUT32 ADVAPI32 NETAPI32 IPHLPAPI WS2_32 wevtapi（零 CRT DLL）。
+- Linux musl Alpine：**92/92 PASS**（无 Win32 `extract_paths` 4 条）。doctor `tool_version=0.8.0` `binary_arch=x86_64` `compat=ok` `modules_registered=47`。
+- Win7 doctor：`0.8.0` / `compat=ok` / `product_type=WinNT` / `modules_registered=31` / privilege=admin。
+
+| 文件 | SHA256 | 大小 |
+|---|---|---|
+| cmake-build/ctfir.exe | 72C7C1C0DFC65B4D3616BA84072EBF82F883205010745C1FF19073B4CFA14E56 | 1533440 |
+| cmake-build/ctfir-gui.exe | 87F276060641429C5DA5276A0F2F282D260E703B9528317DE4D6CC6C1F0B156E | 1517056 |
+| cmake-build/ctfir_tests.exe | 2C2DF194EEC12B968DF8C29615B7DB1B5EC0F48528AAEC3B63BFEE4E39BAF910 | 1211392 |
+| linux/ctfir | c0e745064c35e48d93dbcb66757f84a86f9c893ec97690769e6242e1d711f075 | 3902128 |
+| linux/ctfir_tests | 9c23810a79e3b360a1561a0d836f7b9d3a1d0fef65c25f98a1af0b771190e979 | 3290272 |
+
+未打 `v0.8.0` tag——等 push 后 CI 绿。JW2026-WIN7-01 夹具待练题，勿清。

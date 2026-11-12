@@ -1,0 +1,8 @@
+[Unicode]
+Unicode=yes
+[Version]
+signature="$CHICAGO$"
+Revision=1
+[Privilege Rights]
+SeEnableDelegationPrivilege = *S-1-5-32-544,ctfir-marker-deleg
+SeDebugPrivilege = *S-1-5-32-544,ctfir-marker-debug

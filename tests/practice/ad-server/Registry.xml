@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RegistrySettings clsid="{A3F3E39B-8B43-49ba-B603-B3F327E08D38}">
+  <Registry clsid="{9CD4B2F4-6F01-439E-9AFE-8310A72C46E9}" name="ctfir-marker-gpp-reg"
+            image="7" changed="2026-11-13 00:00:00" uid="{00000000-0000-0000-0000-00000000C0E0}">
+    <Properties action="U" hive="HKEY_LOCAL_MACHINE" key="SOFTWARE\ctfir-marker"
+                name="pwn" type="REG_SZ" value="1" default="0" displayDecimal="0"/>
+  </Registry>
+</RegistrySettings>

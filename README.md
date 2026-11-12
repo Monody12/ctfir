@@ -10,7 +10,7 @@
 2. **离线**——代码中零网络 API；报告零外部资源，可断网打开。
 3. **如实**——PASS 只代表"声明范围内未命中"；权限不足 / 超时 / 未覆盖项全部如实列出，不充当安全结论。
 
-- **当前版本**：v0.7.0（规则包 6.0.1，2026-11-12）｜ 许可证 [MIT](LICENSE)
+- **当前版本**：v0.8.0（规则包 7.0.0，2026-11-13）｜ 许可证 [MIT](LICENSE)
 - **支持平台**：Windows 7 SP1+ x64 / Windows 10/11 x64（GUI + CLI）；Linux x86_64 静态二进制（CLI，CentOS 7 用户态已验）
 - **完整兼容矩阵**：[packaging/COMPATIBILITY.md](packaging/COMPATIBILITY.md) ｜ 已知限制：[packaging/KNOWN_LIMITATIONS.md](packaging/KNOWN_LIMITATIONS.md)
 
@@ -20,8 +20,7 @@
 
 ### 1.1 获取
 
-- 从 [Releases](https://github.com/Monody12/ctfir/releases) 下载对应架构包（`ctfir-v0.7.0-windows-x64.zip` / `ctfir-v0.7.0-linux-x86_64.zip`），或自行构建（见开发者章节）。
-- 每次推送 `main` 会跑 [Actions/ci](https://github.com/Monody12/ctfir/actions/workflows/ci.yml)：打开最新成功 run → Artifacts 下载 `windows-zip` / `linux-zip`（需登录 GitHub）。打 `v*` tag 才会发 Release。
+- 从 [Releases](https://github.com/Monody12/ctfir/releases) 下载对应架构包，或打开最新成功 [Actions/ci](https://github.com/Monody12/ctfir/actions/workflows/ci.yml) Artifact（push `main` 即出包，需登录）。打 `v*` tag 才发 Release。
 - 复制整个目录到**目标机本地**（不要在共享盘直接运行），核对 `SHA256SUMS`。
 
 ### 1.2 图形界面（Windows）
@@ -92,7 +91,7 @@ ctfir.exe (CLI)  /  ctfir-gui.exe (Win32)
 | `core/` | 引擎：调度、数据契约（schema v1）、SHA-256、报告、建议库 |
 | `platform/win/` | `mod_w/w2/w3.cpp` 三个模块族 + 公共助手（注册表双视图、路径提取器） |
 | `platform/linux/` | `mod_a/b/c/d.cpp` 四个模块族 + 公共助手 |
-| `docs/` | [DETECTION-POINTS.md](docs/DETECTION-POINTS.md)（100 检测点台账）、[KNOWLEDGE-MAP.md](docs/KNOWLEDGE-MAP.md)（考点映射） |
+| `docs/` | [DETECTION-POINTS.md](docs/DETECTION-POINTS.md)（189 检测点台账）、[AD-SERVER-POINTS.md](docs/AD-SERVER-POINTS.md)、[KNOWLEDGE-MAP.md](docs/KNOWLEDGE-MAP.md) |
 | `tests/` | 单测 + [cases/](tests/cases/) 声明式用例库 + 三套夹具生成器 |
 | `scripts/` | 构建 / 测试 / 打包脚本 |
 | `packaging/` | 发布包文档（README-先读我 / COMPATIBILITY / KNOWN_LIMITATIONS） |

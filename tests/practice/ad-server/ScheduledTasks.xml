@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScheduledTasks clsid="{CC63F200-7309-4ba0-B154-A71CD118DBCC}">
+  <Task clsid="{2DEA8CCF-EF68-4bad-AD8A-1771E899FE91}" name="ctfir-marker-gpo"
+        userName="NT AUTHORITY\System" changed="2026-11-12 12:00:00">
+    <Properties action="C">
+      <Task version="1.2">
+        <Actions>
+          <Exec>
+            <Command>C:\Windows\Temp\ctfir-marker-gpo.bat</Command>
+            <Arguments></Arguments>
+          </Exec>
+        </Actions>
+      </Task>
+    </Properties>
+  </Task>
+</ScheduledTasks>

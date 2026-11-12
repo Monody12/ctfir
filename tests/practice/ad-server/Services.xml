@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<NTServices clsid="{91FBB303-0CD5-4055-BF42-E512CD446D39}">
+  <NTService clsid="{AB6F0B91-566C-4e85-8876-6FE6B17280C3}" name="ctfir-marker-svc"
+             image="0" changed="2026-11-13 00:00:00" uid="{00000000-0000-0000-0000-00000000C0E2}">
+    <Properties startupType="AUTOMATIC" serviceName="ctfir-marker-svc"
+                serviceAction="START" timeout="30"
+                accountName="LocalSystem" userName=""
+                cpassword="ctfirMarkerServiceCpasswordXX"/>
+  </NTService>
+</NTServices>

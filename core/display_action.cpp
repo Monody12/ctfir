@@ -31,7 +31,12 @@ static bool is_persist_rule(const std::string& rid) {
            rid.find("CRON") != std::string::npos ||
            rid.find("IFEO") != std::string::npos ||
            rid.find("LOGONSCRIPT") != std::string::npos ||
-           rid.find("PORTPROXY") != std::string::npos;
+           rid.find("PORTPROXY") != std::string::npos ||
+           rid.find("AD.GPP") != std::string::npos ||
+           rid.find("AD.NTDS") != std::string::npos ||
+           rid.find("AD.IFM") != std::string::npos ||
+           rid.find("AD.SYSVOL") != std::string::npos ||
+           rid.find("AD.GPO") != std::string::npos;
 }
 
 static std::string account_of(const Finding& f) {
@@ -237,6 +242,127 @@ DisplayAction display_action(const Finding& f) {
         a.contest_note.clear();
     } else if (starts_with(rid, "WIN.AUTORUN.") && is_win_path(obj)) {
         a.command = "del /f \"" + obj + "\"";
+    } else if (rid == "WIN.AD.GPP.CPASSWORD.001" || rid == "WIN.AD.NTDS.COPY.001" ||
+               rid == "WIN.AD.IFM.001" || rid == "WIN.AD.SYSVOL.SCRIPT.001" ||
+               rid == "WIN.AD.GPO.TASK.001" || rid == "WIN.AD.GPO.SCRIPTINI.001" ||
+               rid == "WIN.AD.GPO.DELEG.001" || rid == "WIN.AD.GPP.ADMIN.001" ||
+               rid == "WIN.AD.GPP.REG.001" || rid == "WIN.AD.GPP.FILE.001" ||
+               rid == "WIN.AD.GPP.SVC.001" || rid == "WIN.AD.HIVE.COPY.001" ||
+               rid == "WIN.AD.LSASS.DMP.001") {
+        if (is_win_path(obj))
+            a.command = "del /f \"" + obj + "\"";
+        a.contest_note = "先复制到证据目录再删。cpassword/哈希不要解密入库。";
+    } else if (rid == "WIN.AD.DSRM.LOGON.001") {
+        a.command = "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\" /v DsrmAdminLogonBehavior /t REG_DWORD /d 0 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.AD.LDAP.NOSIGN.001") {
+        a.command = "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters\" /v LDAPServerIntegrity /t REG_DWORD /d 2 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.AD.SPOOLER.DC.001") {
+        a.command = "sc stop Spooler\r\nsc config Spooler start= disabled";
+        a.contest_note = "仅域控/无打印需求的服务器执行；工作站误报不要关。";
+    } else if (rid == "WIN.AD.SMBSIGN.001") {
+        a.command = "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\" /v RequireSecuritySignature /t REG_DWORD /d 1 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.WDIGEST.001") {
+        a.command = "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest\" /v UseLogonCredential /t REG_DWORD /d 0 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.NTLMV1.001") {
+        a.command = "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\" /v LmCompatibilityLevel /t REG_DWORD /d 5 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.LATFP.001") {
+        a.command = "reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\" /v LocalAccountTokenFilterPolicy /t REG_DWORD /d 0 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.NOLMHASH.001") {
+        a.command = "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\" /v NoLmHash /t REG_DWORD /d 1 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.RESTRICTANON.001") {
+        a.command = "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\" /v RestrictAnonymousSAM /t REG_DWORD /d 1 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.EVERYONEANON.001") {
+        a.command = "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\" /v EveryoneIncludesAnonymous /t REG_DWORD /d 0 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.PLAINSMB.001") {
+        a.command = "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters\" /v EnablePlainTextPassword /t REG_DWORD /d 0 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.PNP.ELEV.001") {
+        a.command = "reg add \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint\" /v NoWarningNoElevationOnInstall /t REG_DWORD /d 0 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.ALWAYSINST.001") {
+        a.command =
+            "reg add \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer\" /v AlwaysInstallElevated /t REG_DWORD /d 0 /f\r\n"
+            "reg add \"HKCU\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer\" /v AlwaysInstallElevated /t REG_DWORD /d 0 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.WINRM.UNENC.001") {
+        a.command =
+            "reg add \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service\" /v AllowUnencrypted /t REG_DWORD /d 0 /f\r\n"
+            "reg add \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service\" /v AllowBasic /t REG_DWORD /d 0 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.FW.OFF.001") {
+        a.command = "netsh advfirewall set allprofiles state on";
+        a.contest_note = "先放行 SSH/RDP/业务端口，再开防火墙。本工具不自动改防火墙。";
+    } else if (rid == "WIN.BASE.PWDHIST.001") {
+        a.command = "net accounts /uniquepw:5";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.PWDAGE.001") {
+        a.command = "net accounts /maxpwage:42";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.LASTUSER.001") {
+        a.command = "reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\" /v DontDisplayLastUserName /t REG_DWORD /d 1 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.RDP.NONLA.001") {
+        a.command = "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp\" /v UserAuthentication /t REG_DWORD /d 1 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.SMB1.001") {
+        a.command = "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\" /v SMB1 /t REG_DWORD /d 0 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.AD.MACHPWD.001") {
+        a.command = "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters\" /v DisablePasswordChange /t REG_DWORD /d 0 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.SEALCHAN.001") {
+        a.command =
+            "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters\" /v SealSecureChannel /t REG_DWORD /d 1 /f\r\n"
+            "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters\" /v RequireSignOrSeal /t REG_DWORD /d 1 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.LDAPCLIENT.001") {
+        a.command = "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Services\\LDAP\" /v LDAPClientIntegrity /t REG_DWORD /d 2 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.AD.LDAP.BIND.001") {
+        a.command = "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters\" /v LdapEnforceChannelBinding /t REG_DWORD /d 2 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.UAC.NOPROMPT.001") {
+        a.command = "reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\" /v ConsentPromptBehaviorAdmin /t REG_DWORD /d 5 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.DISABLECAD.001") {
+        a.command = "reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\" /v DisableCAD /t REG_DWORD /d 0 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.PNP.ADMIN.001") {
+        a.command = "reg add \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint\" /v RestrictDriverInstallationToAdministrators /t REG_DWORD /d 1 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.RDP.SECLAYER.001") {
+        a.command = "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp\" /v SecurityLayer /t REG_DWORD /d 2 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.CACHEDLOGON.001") {
+        a.command = "reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\" /v CachedLogonsCount /t REG_SZ /d 10 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.FORCELOGOFF.001") {
+        a.command = "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\" /v enableforcedlogoff /t REG_DWORD /d 1 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.NTLMSEC.001") {
+        a.command = "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\MSV1_0\" /v NtlmMinClientSec /t REG_DWORD /d 537395200 /f";
+        a.contest_note = "537395200 = 0x20080000（NTLMv2 session + 128-bit）";
+    } else if (rid == "WIN.BASE.PS.UNRESTRICT.001") {
+        a.command = "reg add \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\" /v ExecutionPolicy /t REG_SZ /d Restricted /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.RDP.ENCRYPT.001") {
+        a.command = "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp\" /v MinEncryptionLevel /t REG_DWORD /d 3 /f";
+        a.contest_note.clear();
+    } else if (rid == "WIN.BASE.REMOTEREG.001") {
+        a.command = "sc config RemoteRegistry start= disabled";
+        a.contest_note = "不要在还需要远程注册表管理的机器上禁用。";
+    } else if (rid == "WIN.BASE.FORCEGUEST.001") {
+        a.command = "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\" /v ForceGuest /t REG_DWORD /d 0 /f";
+        a.contest_note.clear();
     }
 
     if (a.command.empty()) a.command = from_plan(f);

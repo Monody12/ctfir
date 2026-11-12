@@ -6,6 +6,7 @@ void register_mods_w1(std::vector<Session::ModuleDef>& mods);
 void register_mods_w2(std::vector<Session::ModuleDef>& mods);
 void register_mods_w3(std::vector<Session::ModuleDef>& mods);
 void register_mods_w4(std::vector<Session::ModuleDef>& mods);
+void register_mods_w5(std::vector<Session::ModuleDef>& mods);
 } // namespace ctfir::win
 
 namespace ctfir {
@@ -16,6 +17,7 @@ std::vector<Session::ModuleDef> build_platform_modules() {
     ctfir::win::register_mods_w2(mods);
     ctfir::win::register_mods_w3(mods);
     ctfir::win::register_mods_w4(mods);
+    ctfir::win::register_mods_w5(mods);
     return mods;
 }
 

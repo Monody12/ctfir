@@ -40,6 +40,22 @@ CTFIR_TEST(triage_jw2026_buckets) {
     CHECK_EQ(bucket_of("WIN.TASK.FACT.001"), Bucket::Inventory);
     CHECK_EQ(bucket_of("WIN.FILES.RECENT.001"), Bucket::Inventory);
     CHECK_EQ(bucket_of("X.UNKNOWN.001"), Bucket::Trace);
+    CHECK_EQ(bucket_of("WIN.AD.GPP.CPASSWORD.001"), Bucket::Clear);
+    CHECK_EQ(bucket_of("WIN.AD.NTDS.COPY.001"), Bucket::Clear);
+    CHECK_EQ(bucket_of("WIN.AD.GPO.TASK.001"), Bucket::Clear);
+    CHECK_EQ(bucket_of("WIN.AD.DSRM.LOGON.001"), Bucket::Harden);
+    CHECK_EQ(bucket_of("WIN.AD.SPOOLER.DC.001"), Bucket::Harden);
+    CHECK_EQ(bucket_of("WIN.AD.ROLE.001"), Bucket::Inventory);
+    CHECK_EQ(bucket_of("WIN.BASE.WDIGEST.001"), Bucket::Harden);
+    CHECK_EQ(bucket_of("WIN.BASE.LASTUSER.001"), Bucket::Harden);
+    CHECK_EQ(bucket_of("WIN.AD.GPP.ADMIN.001"), Bucket::Clear);
+    CHECK_EQ(bucket_of("WIN.AD.GPP.REG.001"), Bucket::Clear);
+    CHECK_EQ(bucket_of("WIN.AD.GPP.FILE.001"), Bucket::Clear);
+    CHECK_EQ(bucket_of("WIN.AD.HIVE.COPY.001"), Bucket::Clear);
+    CHECK_EQ(bucket_of("WIN.AD.LSASS.DMP.001"), Bucket::Clear);
+    CHECK_EQ(bucket_of("WIN.AD.MACHPWD.001"), Bucket::Harden);
+    CHECK_EQ(bucket_of("WIN.BASE.UAC.NOPROMPT.001"), Bucket::Harden);
+    CHECK_EQ(bucket_of("WIN.BASE.REMOTEREG.001"), Bucket::Harden);
 }
 
 CTFIR_TEST(triage_titles_and_visibility) {
@@ -85,6 +101,15 @@ CTFIR_TEST(display_action_filled_commands) {
     CHECK(ads.command.find("powershell") == std::string::npos);
     CHECK(ads.command.find("del ") != std::string::npos);
     CHECK(ads.command.find("hidden.exe") != std::string::npos);
+
+    auto gpp = display_action(mk("WIN.AD.GPP.CPASSWORD.001",
+                                 "C:\\Windows\\SYSVOL\\sysvol\\ctfir.local\\Policies\\x\\Groups.xml"));
+    CHECK(gpp.command.find("del /f") != std::string::npos);
+    CHECK(gpp.command.find("Groups.xml") != std::string::npos);
+
+    auto wdigest = display_action(mk("WIN.BASE.WDIGEST.001", "WDigest\\UseLogonCredential"));
+    CHECK(wdigest.command.find("UseLogonCredential") != std::string::npos);
+    CHECK(wdigest.command.find("/d 0") != std::string::npos);
 
     auto auto_logon = display_action(mk("WIN.BASE.AUTOLOGON.001", "Winlogon\\AutoAdminLogon"));
     CHECK(auto_logon.command.find("AutoAdminLogon") != std::string::npos);

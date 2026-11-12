@@ -31,6 +31,7 @@ void mod_base_password(ModuleCtx& ctx) {
     DWORD minlen = u1->usrmod0_min_passwd_len;
     DWORD maxage = u1->usrmod0_max_passwd_age;
     DWORD minage = u1->usrmod0_min_passwd_age;
+    DWORD hist = u1->usrmod0_password_hist_len;
     NetApiBufferFree(u1);
     USER_MODALS_INFO_3* u3 = nullptr;
     DWORD lockout_thr = 0, have3 = 0;
@@ -43,8 +44,10 @@ void mod_base_password(ModuleCtx& ctx) {
     e.source_kind = "api";
     e.source_path = "NetUserModalsGet(1/3) 密码策略";
     e.payload = "最小密码长度=" + std::to_string(minlen) +
-                " 最长使用期=" + std::to_string(maxage / 86400) + " 天" +
+                " 最长使用期=" + (maxage == 0xFFFFFFFFu ? std::string("无限") :
+                                 std::to_string(maxage / 86400) + " 天") +
                 " 最短使用期=" + std::to_string(minage / 86400) + " 天" +
+                " 历史=" + std::to_string(hist) +
                 (have3 ? " 锁定阈值=" + std::to_string(lockout_thr) + " 次失败" : "");
     ctx.add_evidence(e);
     ctx.checked_source("密码策略");
@@ -54,6 +57,26 @@ void mod_base_password(ModuleCtx& ctx) {
         f.severity = "medium";
         f.confidence = "high";
         f.rationale = "密码最小长度 " + std::to_string(minlen) + " 位（基线建议 ≥8）——弱口令/爆破面扩大";
+        f.object_ref = "NetUserModalsGet";
+        f.advice_id = "ADVICE.HARDEN.001";
+        ctx.add_finding(f);
+    }
+    if (hist == 0) {
+        Finding f;
+        f.rule_id = "WIN.BASE.PWDHIST.001";
+        f.severity = "low";
+        f.confidence = "high";
+        f.rationale = "密码历史长度为 0（可立即重用旧口令）。技能赛常见要求 ≥5";
+        f.object_ref = "NetUserModalsGet";
+        f.advice_id = "ADVICE.HARDEN.001";
+        ctx.add_finding(f);
+    }
+    if (maxage == 0xFFFFFFFFu) {
+        Finding f;
+        f.rule_id = "WIN.BASE.PWDAGE.001";
+        f.severity = "low";
+        f.confidence = "high";
+        f.rationale = "密码最长使用期限为无限（不过期）。技能赛常见要求 30–45 天";
         f.object_ref = "NetUserModalsGet";
         f.advice_id = "ADVICE.HARDEN.001";
         ctx.add_finding(f);
@@ -183,12 +206,20 @@ void mod_base_reg(ModuleCtx& ctx) {
         ctx.add_finding(f);
     }
 
-    // 登录界面不显示最后用户名（基线缺失项，low）
+    // 登录界面不显示最后用户名（技能赛/等保高频项）
     std::string ddu;
     reg_get(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
             L"DontDisplayLastUserName", false, ddu);
-    if (ddu == "0" || ddu.empty())
-        ctx.note("基线提示：登录界面显示最后登录用户名（DontDisplayLastUserName 未启用）");
+    if (ddu == "0" || ddu.empty()) {
+        Finding f;
+        f.rule_id = "WIN.BASE.LASTUSER.001";
+        f.severity = "low";
+        f.confidence = "high";
+        f.rationale = "登录界面显示最后登录用户名（DontDisplayLastUserName 未启用）——减少账户枚举成本";
+        f.object_ref = "Policies\\System\\DontDisplayLastUserName";
+        f.advice_id = "ADVICE.HARDEN.001";
+        ctx.add_finding(f);
+    }
 
     // 日志保留策略
     for (const wchar_t* ch : {L"Application", L"System", L"Security"}) {

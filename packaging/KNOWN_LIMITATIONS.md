@@ -36,3 +36,13 @@
 25. **不是 360 / 系统急救箱**：不做 SFC、DISM、注册表垃圾清理、驱动修复、系统文件替换。比赛急救路径是 `ctfir scan` → `ctfir actions --bucket clear`（或 GUI「复制命令」）→ 人工粘贴。GUI 永不自动 apply。
 26. **Win7 RTM (7600) 与 32 位 x86 未交付**：见 COMPATIBILITY。doctor 的 `compat=warn` 只提示，不阻断扫描。
 27. **CI 产物必须用 VS2022（windows-2022）构建**：`windows-latest` 已是 VS18，不再作为 Win7 发布链。
+
+## v0.8.0 补充（2026-11-12）
+
+28. **不是域控查询工具**：不连 LDAP、不枚举 Domain Admins、不读 krbtgt、不解析 ntds.dit 哈希、不解密 GPP cpassword。活 DC 上本地 SAM 仍只含 DC 本机账户（PLAN W01）。
+29. **looks_like_dc 是启发式**：SYSVOL 目录存在即视为域控特征（夹具如此）。误把工作站 SYSVOL 残留当 DC 时，Spooler/SMB 签名告警会出现——删掉 SYSVOL 树即消失，不要在工作站关 Spooler。
+30. **防火墙发现不自动修复**：`WIN.BASE.FW.OFF.001` 只提示。一键开启可能切断 SSH/RDP。
+31. **无真实 Server 2008 R2 DC 真机格**：AD 规则在 Win7 上用文件/注册表模拟验证；活 AD DS 仍 AUTOMATED_SUBSTITUTE。
+32. **凭据副本只报路径**：`sam.save` / `ntds.dit` / `lsass.dmp` 只告警文件存在。不解析哈希、不解密 cpassword、不打开 dump。
+33. **实验机 Netlogon 原值**：Win7 VM 的 `DisablePasswordChange=1`、`SealSecureChannel=0` 是清理后仍在的实验室原配置，不是夹具残留。不要为消告警去改实验机。
+
