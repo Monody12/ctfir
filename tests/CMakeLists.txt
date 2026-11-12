@@ -2,6 +2,7 @@ add_executable(ctfir_tests
   test_main.cpp
   test_engine.cpp
   test_platform.cpp
+  test_log_attack.cpp
 )
 target_link_libraries(ctfir_tests PRIVATE ctfir_core)
 if(WIN32)

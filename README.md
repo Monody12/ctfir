@@ -6,11 +6,11 @@
 
 三条不可协商的红线：
 
-1. **只读**——没有 `fix` / `apply`，不修改目标机任何配置；处置建议仅为文本，工具不执行。
+1. **只读为主**——默认扫描不修改目标机；v0.5 起可选受控 `fix`（白名单规则、需确认、先备份、支持 dry-run），默认不执行。
 2. **离线**——代码中零网络 API；报告零外部资源，可断网打开。
 3. **如实**——PASS 只代表"声明范围内未命中"；权限不足 / 超时 / 未覆盖项全部如实列出，不充当安全结论。
 
-- **当前版本**：v0.3.0（规则包 3.0.0，2026-11-09）｜ 许可证 [MIT](LICENSE)
+- **当前版本**：v0.6.0（规则包 6.0.0，2026-11-12）｜ 许可证 [MIT](LICENSE)
 - **支持平台**：Windows 7 SP1+ x64 / Windows 10/11 x64（GUI + CLI）；Linux x86_64 静态二进制（CLI，CentOS 7 用户态已验）
 - **完整兼容矩阵**：[packaging/COMPATIBILITY.md](packaging/COMPATIBILITY.md) ｜ 已知限制：[packaging/KNOWN_LIMITATIONS.md](packaging/KNOWN_LIMITATIONS.md)
 
@@ -20,7 +20,7 @@
 
 ### 1.1 获取
 
-- 从 [Releases](https://github.com/Monody12/ctfir/releases) 下载对应架构包（`ctfir-v0.3-windows-x64.zip` / `ctfir-v0.3-linux-x86_64.zip`），或自行构建（见开发者章节）。
+- 从 [Releases](https://github.com/Monody12/ctfir/releases) 下载对应架构包（`ctfir-v0.6-windows-x64.zip` / `ctfir-v0.6-linux-x86_64.zip`），或自行构建（见开发者章节）。
 - 复制整个目录到**目标机本地**（不要在共享盘直接运行），核对 `SHA256SUMS`。
 
 ### 1.2 图形界面（Windows）

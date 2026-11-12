@@ -1,5 +1,6 @@
 // Windows 模块第二批：W03 计划任务(COM) / W07 进程与连接 / W09 事件日志 / W13 Web
 #include "win_common.hpp"
+#include "core/log_attack.hpp"
 
 #include <winsock2.h>
 #include <taskschd.h>
@@ -10,6 +11,7 @@
 #include <comdef.h>
 #include <map>
 #include <set>
+#include <algorithm>
 
 #pragma comment(lib, "taskschd.lib")
 #pragma comment(lib, "iphlpapi.lib")
@@ -369,12 +371,65 @@ void mod_procnet(ModuleCtx& ctx) {
     ctx.set_status(ModuleStatus::PASS);
 }
 
-// ---- W09 事件日志（4624/4625 登录 + 4720-4732 账户生命周期时间线）----
+// ---- W09 事件日志（4624/4625 登录 + 4720-4732 账户生命周期时间线 + System 7045 服务创建）----
 void mod_evtlog(ModuleCtx& ctx) {
+    // 7045（服务创建）写在 System 通道——单独查询（玄机·权限维持：伪装 MysqlServer 服务）
+    {
+        EVT_HANDLE sq = EvtQuery(nullptr, L"System",
+                                 L"*[System[(EventID=7045)]]",
+                                 EvtQueryChannelPath | EvtQueryReverseDirection);
+        if (sq) {
+            std::vector<EVT_HANDLE> sev(50);
+            DWORD sret = 0;
+            int sread = 0;
+            while (sread < 200 && EvtNext(sq, 50, sev.data(), 2000, 0, &sret) && sret > 0) {
+                for (DWORD i = 0; i < sret; ++i) {
+                    DWORD sn = 0, sp = 0;
+                    EvtRender(nullptr, sev[i], EvtRenderEventXml, 0, nullptr, &sn, &sp);
+                    if (sn == 0 || sn > 1024 * 1024) { EvtClose(sev[i]); continue; }
+                    std::vector<wchar_t> sxml(sn / 2 + 2);
+                    if (!EvtRender(nullptr, sev[i], EvtRenderEventXml, sn, sxml.data(), &sn, &sp)) {
+                        EvtClose(sev[i]); continue;
+                    }
+                    EvtClose(sev[i]);
+                    std::string sx = wide_to_utf8(sxml.data());
+                    std::string sname = xml_data(sx, "ServiceName");
+                    std::string spath = xml_data(sx, "ImagePath");
+                    std::string slow = to_lower(spath);
+                    bool camouflage = contains_ci(sname, "mysql") &&
+                                      !contains_ci(slow, "mysql") && !contains_ci(slow, "mariadb");
+                    bool sus = !spath.empty() &&
+                               (is_writable_path(spath) || camouflage ||
+                                slow.find("cmd.exe") != std::string::npos ||
+                                slow.find("powershell") != std::string::npos ||
+                                slow.find("psexesvc") != std::string::npos ||
+                                slow.find("%temp%") != std::string::npos ||
+                                slow.find("appdata") != std::string::npos);
+                    if (sus) {
+                        Finding f;
+                        f.rule_id = "WIN.EVT.SVC7045.001";
+                        f.severity = "high";
+                        f.confidence = "medium";
+                        f.rationale = "新安装服务指向可写路径/解释器: " +
+                                      (sname.empty() ? "?" : sname) + " → " + spath.substr(0, 150) +
+                                      "（System 7045——服务后门安装记录，时间即植入时间）";
+                        f.object_ref = "System 7045:" + sname;
+                        f.advice_id = "ADVICE.SVC.REVIEW.001";
+                        ctx.add_finding(f);
+                    }
+                    ++sread;
+                }
+            }
+            EvtClose(sq);
+            ctx.checked_source("System 7045 服务创建（" + std::to_string(sread) + " 条）");
+        } else {
+            ctx.note("System 7045 查询失败（err=" + std::to_string(GetLastError()) + "）");
+        }
+    }
     // Security 通道需要管理员；受限令牌下 EvtQuery 失败 → PERMISSION_DENIED
     LPCWSTR channel = L"Security";
     LPCWSTR query = L"*[System[(EventID=4624 or EventID=4625 or EventID=4720 or EventID=4722 "
-                    L"or EventID=4724 or EventID=4725 or EventID=4726 or EventID=4732 or EventID=4781 or EventID=1102)]]";
+                    L"or EventID=4724 or EventID=4725 or EventID=4726 or EventID=4732 or EventID=4781 or EventID=1102 or EventID=4697)]]";
     EVT_HANDLE q = EvtQuery(nullptr, channel, query, EvtQueryChannelPath | EvtQueryReverseDirection);
     if (!q) {
         DWORD err = GetLastError();
@@ -443,6 +498,33 @@ void mod_evtlog(ModuleCtx& ctx) {
                 if (oldn.empty()) oldn = target;
                 mgmt_timeline.push_back(tb + " 改名账户 " + oldn + " → " +
                                         (newn.empty() ? "?" : newn));
+            } else if (eid == 4697) {
+                // Security 通道服务安装（与 System 7045 成对；字段 ServiceFileName）
+                std::string sname = xml_data(x, "ServiceName");
+                std::string spath = xml_data(x, "ServiceFileName");
+                if (spath.empty()) spath = xml_data(x, "ImagePath");
+                if (!spath.empty()) {
+                    std::string slow = to_lower(spath);
+                    bool sus = is_writable_path(spath) ||
+                               slow.find("cmd.exe") != std::string::npos ||
+                               slow.find("powershell") != std::string::npos ||
+                               slow.find("%temp%") != std::string::npos ||
+                               slow.find("appdata") != std::string::npos;
+                    if (sus) {
+                        Finding f;
+                        f.rule_id = "WIN.EVT.SVC7045.001";
+                        f.severity = "high";
+                        f.confidence = "medium";
+                        f.rationale = "新安装服务指向可写路径/解释器: " +
+                                      (sname.empty() ? "?" : sname) + " -> " + spath.substr(0, 150) +
+                                      "（Security 4697——与 System 7045 对应的审计事件，时间即植入时间）";
+                        f.object_ref = "Security 4697:" + sname;
+                        f.advice_id = "ADVICE.SVC.REVIEW.001";
+                        ctx.add_finding(f);
+                    }
+                    mgmt_timeline.push_back(tb + " 创建服务 " + (sname.empty() ? "?" : sname) +
+                                            " -> " + spath.substr(0, 80));
+                }
             } else if (eid == 1102) {
                 log_cleared = true;
                 mgmt_timeline.push_back(tb + " 安全日志被清除！");
@@ -719,7 +801,51 @@ void mod_web(ModuleCtx& ctx) {
         ctx.checked_source("攻击工具文件特征");
     }
 
-    // IIS 日志（W3C 格式）：POST Top IP
+    // IIS W3C 日志：POST Top IP + GET/POST 攻击特征；兼扫 phpstudy/xampp/wamp combined 日志
+    auto emit_win_weblog = [&](const std::string& lp, const AccessLogSummary& s, const std::string& sha) {
+        if (s.posts == 0 && s.attack_hits == 0) { ctx.checked_source(lp); return; }
+        Evidence le;
+        le.source_kind = "file";
+        le.source_path = lp;
+        le.sha256 = sha;
+        le.payload = "POST=" + std::to_string(s.posts) + " top_ip: " + top_ip_str(s.post_ip) +
+                     "\nattack=" + std::to_string(s.attack_hits) + " top_ip: " + top_ip_str(s.attack_ip);
+        if (!s.samples.empty()) {
+            le.payload += "\nsamples:\n";
+            for (const auto& sm : s.samples) le.payload += "  " + sm + "\n";
+        }
+        std::string ev_id = ctx.add_evidence(le);
+        ctx.checked_source(lp);
+        if (s.posts >= 50) {
+            Finding f;
+            f.rule_id = "WIN.WEB.LOGPOST.001";
+            f.severity = "low";
+            f.confidence = "medium";
+            f.rationale = "Web 日志 POST 请求集中（" + std::to_string(s.posts) +
+                          " 次）：webshell 交互/上传线索；Top IP: " + top_ip_str(s.post_ip);
+            f.object_ref = lp;
+            f.evidence_ids = {ev_id};
+            f.advice_id = "ADVICE.WEBSHELL.REVIEW.001";
+            ctx.add_finding(f);
+        }
+        if (s.attack_hits > 0) {
+            std::string kinds;
+            for (const auto& kv : s.attack_kind)
+                kinds += kv.first + "x" + std::to_string(kv.second) + " ";
+            Finding f;
+            f.rule_id = "WIN.WEB.LOGATTACK.001";
+            f.severity = "medium";
+            f.confidence = "medium";
+            f.rationale = "Web 访问日志发现 " + std::to_string(s.attack_hits) +
+                          " 条攻击特征（" + kinds + "）；Top IP: " + top_ip_str(s.attack_ip) +
+                          " 样本: " + (s.samples.empty() ? "" : s.samples.front()) +
+                          "（SQLi/目录穿越/webshell 访问/扫描器 UA）";
+            f.object_ref = lp;
+            f.evidence_ids = {ev_id};
+            f.advice_id = "ADVICE.WEBSHELL.REVIEW.001";
+            ctx.add_finding(f);
+        }
+    };
     {
         std::string logroot = sysroot() + "\\System32\\LogFiles\\W3SVC";
         std::vector<std::string> svcdirs;
@@ -734,6 +860,19 @@ void mod_web(ModuleCtx& ctx) {
                 FindClose(fh);
             }
         }
+        // IIS 也可能把日志放在 inetpub\logs\LogFiles\W3SVC*
+        std::string alt = "C:\\inetpub\\logs\\LogFiles";
+        if (dir_exists(alt)) {
+            WIN32_FIND_DATAA fd;
+            HANDLE fh = FindFirstFileA((alt + "\\W3SVC*").c_str(), &fd);
+            if (fh != INVALID_HANDLE_VALUE) {
+                do {
+                    if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+                        svcdirs.push_back(alt + "\\" + fd.cFileName);
+                } while (FindNextFileA(fh, &fd));
+                FindClose(fh);
+            }
+        }
         for (const auto& svcdir : svcdirs) {
             WIN32_FIND_DATAA fd;
             HANDLE fh = FindFirstFileA((svcdir + "\\*.log").c_str(), &fd);
@@ -743,61 +882,43 @@ void mod_web(ModuleCtx& ctx) {
                 ctx.planned_source(lp);
                 ReadResult r = read_text_file(lp, 8 * 1024 * 1024);
                 if (!r.ok) { ctx.omitted_source(lp, r.access_status); continue; }
-                // 解析 #Fields 行定位 cs-method 与 c-ip 列
-                int method_col = -1, ip_col = -1;
-                std::map<std::string, int> post_ip;
+                int method_col = -1, ip_col = -1, stem_col = -1, query_col = -1, ua_col = -1;
+                AccessLogSummary s;
                 for_each_line(r.content, [&](int, const std::string& line) {
                     if (starts_with(line, "#Fields:")) {
-                        method_col = -1;
-                        ip_col = -1;
+                        method_col = ip_col = stem_col = query_col = ua_col = -1;
                         std::istringstream is(line.substr(8));
                         std::string w;
                         int col = 0;
                         while (is >> w) {
                             if (w == "cs-method") method_col = col;
                             if (w == "c-ip") ip_col = col;
+                            if (w == "cs-uri-stem") stem_col = col;
+                            if (w == "cs-uri-query") query_col = col;
+                            if (w == "cs(User-Agent)" || w == "cs(User-Agent)") ua_col = col;
                             ++col;
                         }
                         return;
                     }
                     if (line.empty() || line[0] == '#' || method_col < 0 || ip_col < 0) return;
                     std::istringstream is(line);
-                    std::string w, method, ip;
+                    std::string w, method, ip, stem, query, ua;
                     int col = 0;
                     while (is >> w) {
                         if (col == method_col) method = w;
                         if (col == ip_col) ip = w;
+                        if (col == stem_col) stem = w;
+                        if (col == query_col && w != "-") query = w;
+                        if (col == ua_col) ua = w;
                         ++col;
-                        if ((int)method.size() && col > ip_col && col > method_col) break;
                     }
-                    if (method == "POST" && !ip.empty()) ++post_ip[ip];
+                    std::string uri = stem;
+                    if (!query.empty()) uri += "?" + query;
+                    // IIS UA 空格写成 +
+                    for (char& c : ua) if (c == '+') c = ' ';
+                    consume_access_request(s, ip, method, uri, ua);
                 });
-                int total_post = 0;
-                std::string top;
-                for (const auto& [ip, cnt] : post_ip) {
-                    total_post += cnt;
-                    top += ip + "×" + std::to_string(cnt) + " ";
-                }
-                if (total_post > 0) {
-                    Evidence le;
-                    le.source_kind = "file";
-                    le.source_path = lp;
-                    le.sha256 = r.raw_sha256;
-                    le.payload = "POST_total=" + std::to_string(total_post) + "\ntop_ip: " + top;
-                    ctx.add_evidence(le);
-                    ctx.checked_source(lp);
-                    if (total_post >= 50) {
-                        Finding f;
-                        f.rule_id = "WIN.WEB.LOGPOST.001";
-                        f.severity = "low";
-                        f.confidence = "medium";
-                        f.rationale = "IIS 日志 POST 请求集中（" + std::to_string(total_post) +
-                                      " 次）：webshell 交互/上传线索；Top IP 见证据";
-                        f.object_ref = lp;
-                        f.advice_id = "ADVICE.WEBSHELL.REVIEW.001";
-                        ctx.add_finding(f);
-                    }
-                }
+                emit_win_weblog(lp, s, r.raw_sha256);
             } while (FindNextFileA(fh, &fd));
             FindClose(fh);
         }
@@ -805,7 +926,32 @@ void mod_web(ModuleCtx& ctx) {
         if (!dir_exists(logroot)) ctx.checked_source(logroot + " [not_found]");
         else ctx.checked_source(logroot);
     }
-    ctx.set_status(ModuleStatus::PASS);
+    // phpstudy / xampp / wamp / nginx 的 combined 访问日志（国内 CTF 高频）
+    {
+        const char* combined_logs[] = {
+            "C:\\phpstudy\\PHPTutorial\\Apache\\logs\\access.log",
+            "C:\\phpstudy\\PHPTutorial\\Nginx\\logs\\access.log",
+            "C:\\phpstudy_pro\\Extensions\\Apache2.4.39\\logs\\access.log",
+            "C:\\phpstudy_pro\\Extensions\\Nginx1.15.11\\logs\\access.log",
+            "C:\\xampp\\apache\\logs\\access.log",
+            "C:\\wamp\\logs\\access.log",
+            "C:\\wamp64\\logs\\access.log",
+            "D:\\phpstudy\\PHPTutorial\\Apache\\logs\\access.log",
+            "D:\\phpstudy\\PHPTutorial\\Nginx\\logs\\access.log",
+            "D:\\phpstudy_pro\\Extensions\\Apache2.4.39\\logs\\access.log",
+            "C:\\nginx\\logs\\access.log",
+            "C:\\inetpub\\logs\\LogFiles\\access.log",
+        };
+        for (const char* lp : combined_logs) {
+            ctx.planned_source(lp);
+            ReadResult r = read_text_file(lp, 8 * 1024 * 1024);
+            if (!r.ok) continue;
+            AccessLogSummary s;
+            for_each_line(r.content, [&](int, const std::string& line) { consume_combined_line(s, line); });
+            emit_win_weblog(lp, s, r.raw_sha256);
+        }
+    }
+        ctx.set_status(ModuleStatus::PASS);
 }
 
 } // namespace
@@ -1218,6 +1364,118 @@ void mod_ransom(ModuleCtx& ctx) {
     ctx.set_status(ModuleStatus::PASS);
 }
 
+// ---- WIN.TRACE.PSHIST：PowerShell 历史命令取证（玄机：PSReadLine ConsoleHost_history.txt）----
+void mod_pshist(ModuleCtx& ctx) {
+    char up[MAX_PATH]{};
+    if (!SUCCEEDED(SHGetFolderPathA(nullptr, CSIDL_PROFILE, nullptr, 0, up))) {
+        ctx.set_status(ModuleStatus::PASS);
+        return;
+    }
+    // 所有用户 + 当前用户的 PSReadLine 历史
+    std::vector<std::string> hists;
+    hists.push_back(std::string(up) + "\\AppData\\Roaming\\Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt");
+    // 遍历其它用户
+    WIN32_FIND_DATAA fd;
+    HANDLE fh = FindFirstFileA("C:\\Users\\*", &fd);
+    if (fh != INVALID_HANDLE_VALUE) {
+        do {
+            if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
+            if (fd.cFileName[0] == '.') continue;
+            std::string u = std::string("C:\\Users\\") + fd.cFileName +
+                            "\\AppData\\Roaming\\Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt";
+            if (u != hists[0]) hists.push_back(u);
+        } while (FindNextFileA(fh, &fd));
+        FindClose(fh);
+    }
+    int scanned = 0, hits = 0;
+    for (const auto& hp : hists) {
+        ReadResult r = read_text_file(hp, 2 * 1024 * 1024);
+        if (!r.ok) continue;
+        ++scanned;
+        Evidence e;
+        e.source_kind = "file";
+        e.source_path = hp;
+        e.payload = "(PS 历史留证) lines=" + std::to_string(
+                        static_cast<int>(std::count(r.content.begin(), r.content.end(), '\n')));
+        ctx.add_evidence(e);
+        for_each_line(r.content, [&](int no, const std::string& line) {
+            if (!ps_hist_suspicious(line)) return;
+            ++hits;
+            if (hits <= 8) {
+                Finding f;
+                f.rule_id = "WIN.TRACE.PSHIST.001";
+                f.severity = "medium";
+                f.confidence = "medium";
+                f.rationale = "PowerShell 历史含可疑命令（第 " + std::to_string(no) + " 行）: " +
+                              line.substr(0, 170) + "（攻击者操作痕迹——溯源金矿）";
+                f.object_ref = hp + ":" + std::to_string(no);
+                f.evidence_paths = {hp};
+                f.advice_id = "ADVICE.EVENTLOG.REVIEW.001";
+                ctx.add_finding(f);
+            }
+        });
+    }
+    if (scanned > 0) ctx.checked_source("PowerShell 历史（" + std::to_string(scanned) + " 文件）");
+    else ctx.note("未找到 PowerShell 历史文件（PSReadLine 未生成或路径不同）");
+    ctx.set_status(ModuleStatus::PASS);
+}
+
+// ---- WIN.FILES.ADS：NTFS 交换数据流隐藏文件（dir /r 等价；FindFirstStreamW）----
+void mod_ads(ModuleCtx& ctx) {
+    std::vector<std::string> dirs;
+    char up[MAX_PATH]{};
+    if (SUCCEEDED(SHGetFolderPathA(nullptr, CSIDL_PROFILE, nullptr, 0, up))) {
+        dirs.push_back(std::string(up) + "\\Desktop");
+        dirs.push_back(std::string(up) + "\\Documents");
+        dirs.push_back(std::string(up) + "\\Downloads");
+    }
+    dirs.push_back("C:\\Users\\Public");
+    char tmp[MAX_PATH]{};
+    if (GetTempPathA(MAX_PATH, tmp)) dirs.push_back(std::string(tmp));
+    int files = 0, hits = 0;
+    for (const auto& d : dirs) {
+        WIN32_FIND_DATAA ffd;
+        HANDLE fh = FindFirstFileA((d + "\\*").c_str(), &ffd);
+        if (fh == INVALID_HANDLE_VALUE) continue;
+        do {
+            if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+            if (ffd.cFileName[0] == '.') continue;
+            std::string fp = d + "\\" + ffd.cFileName;
+            if (++files > 600 || ctx.expired()) break;
+            WIN32_FIND_STREAM_DATA fsd{};
+            std::wstring wfp = utf8_to_wide(fp);
+            HANDLE sh = FindFirstStreamW(wfp.c_str(), FindStreamInfoStandard, &fsd, 0);
+            if (sh == INVALID_HANDLE_VALUE) continue; // FAT32 或无流
+            for (;;) {
+                std::string s = wide_to_utf8(fsd.cStreamName);
+                // 主数据流与 Zone.Identifier 等良性流跳过；命名流 :hidden.exe:$DATA 即可疑 ADS
+                if (!ads_stream_benign(s)) {
+                    ++hits;
+                    if (hits <= 10) {
+                        size_t dollar = s.find('$');
+                        Finding f;
+                        f.rule_id = "WIN.FILES.ADS.001";
+                        f.severity = "high";
+                        f.confidence = "high";
+                        f.rationale = "NTFS 交换数据流（ADS）隐藏文件: " + fp +
+                                      s.substr(0, dollar == std::string::npos ? s.size() : dollar + 1) +
+                                      "——资源管理器/dir 默认不可见（需 dir /r）";
+                        f.object_ref = fp + s;
+                        f.advice_id = "ADVICE.HASH.BASELINE.001";
+                        ctx.add_finding(f);
+                    }
+                }
+                if (!FindNextStreamW(sh, &fsd)) break;
+            }
+            FindClose(sh);
+        } while (FindNextFileA(fh, &ffd));
+        FindClose(fh);
+    }
+    if (hits == 0) ctx.checked_source("NTFS ADS 扫描 [clean]（" + std::to_string(files) + " 文件）");
+    else ctx.checked_source("NTFS ADS 扫描（" + std::to_string(hits) + " 条隐藏流）");
+    ctx.set_status(ModuleStatus::PASS);
+}
+
 // ---- WIN.AUDITPOL：审核策略状态（auditpol 只读收集；等保"日志审计"前提）----
 void mod_auditpol(ModuleCtx& ctx) {
     // auditpol 输出重定向到临时文件再读取（避免引入管道语义）
@@ -1298,6 +1556,8 @@ void register_mods_w2(std::vector<Session::ModuleDef>& mods) {
     mods.push_back({"WIN.FILES", "1.0.0", "windows", [](ModuleCtx& c) { mod_files(c); }});
     mods.push_back({"WIN.RANSOM", "1.0.0", "windows", [](ModuleCtx& c) { mod_ransom(c); }});
     mods.push_back({"WIN.AUDITPOL", "1.0.0", "windows", [](ModuleCtx& c) { mod_auditpol(c); }});
+    mods.push_back({"WIN.TRACE.PSHIST", "1.0.0", "windows", [](ModuleCtx& c) { mod_pshist(c); }});
+    mods.push_back({"WIN.FILES.ADS", "1.0.0", "windows", [](ModuleCtx& c) { mod_ads(c); }});
 }
 
 } // namespace ctfir::win

@@ -1,4 +1,4 @@
-# DETECTION-POINTS — 检测点全表 v0.3（用例需求的唯一来源）
+# DETECTION-POINTS — 检测点全表 v0.6（用例需求的唯一来源）
 
 来源约定：`[A=T1053.005]` = MITRE ATT&CK；`[AR]`=Autoruns 覆盖位置清单；`[LY]`=Lynis/GScan 检查项类；`[CTF]`=ctfshow 应急题面考点。每个检测点 ↔ 规则 ID ↔ 用例行（tests/cases/*.tsv）。
 用例纪律：每点最少 1 正例 + 2 负例 + 3 变体；负例语料 = 四环境干净扫描 explained-findings.tsv。
@@ -120,5 +120,15 @@
 | 130 | Guest 入管理员组 | [知攻·克隆账号] | WIN.ACC.GUESTADMIN.001 | Guest RID501 in Admins | — |
 | 131 | 用户改名事件 | [玄机·evtx] | （W09 4781 时间线） | Administrator→Administratro | — |
 | 132 | 远控软件痕迹 | [玄机·向日葵题] | WIN.RMT.SOFTWARE/RCE.001 | SunLogin/ToDesk 等 | 未装静默；RCE 走日志特征 |
+| 133 | 服务创建事件 7045/4697 | [玄机·权限维持 MysqlServer] | WIN.EVT.SVC7045.001 | System 7045 可写路径/解释器/Mysql 伪装名；Security 4697 成对 | 系统目录合法服务不报；7045 不在 Security 通道（已改查 4697） |
+| 134 | PowerShell 历史取证 | [玄机][CTF] | WIN.TRACE.PSHIST.001 | PSReadLine ConsoleHost_history.txt 含 -enc/IEX/DownloadString | 普通 Get-ChildItem / 单独 whoami 不报 |
+| 135 | NTFS ADS 隐藏流 | [CTF][AR] | WIN.FILES.ADS.001 | Desktop/Documents/Downloads/Public/Temp 命名流 :hidden.exe | Zone.Identifier / favicon / 主数据流 ::$DATA 不报 |
+| 136 | SSH 明文口令记录后门 | [玄机·Linux后门应急 /tmp/.sshlog] | LNX.PERSIST.SSHLOG.001 | /tmp/.sshlog 等 PAM 落点 | 无文件不报；同路径不双计；口令正文不入库 |
+| 137 | 宝塔 wwwlogs 访问日志 | [玄机·宝塔题] | LNX.WEB.LOGPOST.001（路径扩展） | /www/wwwlogs/{site}.log POST Top IP | 仅 access.log 文件名会漏检（已修）；.error.log 跳过 |
+| 138 | Web 日志 GET 攻击特征（Linux） | [决赛指南·日志审计] | LNX.WEB.LOGATTACK.001 | URL SQLi / ../ 穿越 / webshell 文件名 / sqlmap UA（含编码） | 普通 GET、业务词 union、curl UA 不报 |
+| 139 | Web 日志 GET 攻击特征（Windows） | [决赛指南·日志审计] | WIN.WEB.LOGATTACK.001 | IIS W3C + phpstudy/xampp/wamp combined 同口径 | 同上负例 |
+| 140 | MySQL slow log 写马/UDF | [决赛指南·数据库日志] | MID.MYSQL.SLOWLOG.001 | slow 日志 INTO OUTFILE / CREATE FUNCTION | 普通 SELECT 不报 |
+| 141 | MySQL binlog 明文取证 | [决赛指南·数据库日志] | MID.MYSQL.BINLOG.001 | STATEMENT 明文 CREATE FUNCTION / OUTFILE | ROW 格式无明文：只留证路径，需 mysqlbinlog 人工（如实 note） |
+| 142 | 编码变体（双重 URL 编码 / %2f 穿越） | 本表 | LOGATTACK 变体 | %2520UNION%2520SELECT、..%2f | 用例覆盖 |
 
-合计 132 检测点（100 + R10-R14 增补 32，来源=决赛指南+玄机题库(实搜WP)+等保基线+知攻善防靶机）↔ 用例库目标 100+ 行。新检测点必须：先入本表（含正负例设计）→ 实现 → 用例行 → 断言通过。
+合计 142 检测点（132 + v0.6 增补 10，来源=决赛指南防守考点+玄机 WP+等保；R16 五点和日志取证补漏）↔ 用例库同步增补。新检测点必须：先入本表（含正负例设计）→ 实现 → 用例行 → 断言通过。

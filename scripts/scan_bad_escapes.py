@@ -7,7 +7,9 @@ files = [
     'platform/win/mod_w.cpp', 'platform/win/mod_w2.cpp',
     'platform/win/mod_w3.cpp', 'platform/win/mod_w4.cpp',
     'platform/win/win_common.hpp', 'platform/win/win_common.cpp',
-    'core/model.cpp', 'core/report.cpp',
+    'platform/linux/mod_d.cpp', 'platform/linux/mod_f.cpp',
+    'platform/linux/mod_h.cpp', 'platform/linux/lnx_common.hpp',
+    'core/model.cpp', 'core/report.cpp', 'core/log_attack.hpp',
 ]
 
 def corrupt_segments(literal):

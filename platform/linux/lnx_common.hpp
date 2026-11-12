@@ -43,6 +43,8 @@ inline const Tok kSuspicious[] = {
     {"cryptonight", "挖矿算法特征"},
     {"bitsadmin", "下载器特征"},
     {"powershell -enc", "编码命令执行特征"},
+    {"sshlog", "SSH 密码记录后门特征"},
+    {"sshpass -p", "明文口令自动化特征"},
 };
 
 inline std::vector<std::pair<std::string, std::string>> match_tokens(const std::string& text) {

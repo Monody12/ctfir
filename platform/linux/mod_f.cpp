@@ -1,8 +1,10 @@
 // 中间件与服务核查模块族（v0.4）：Redis / MySQL / PHP / Tomcat / Nginx 危险配置，
 // web 根备份文件泄露。对照决赛指南"数据库与中间件安全配置核查"考点。
 #include "lnx_common.hpp"
+#include "core/log_attack.hpp"
 
 #include <cstring>
+#include <set>
 
 namespace ctfir::lnx {
 
@@ -187,62 +189,110 @@ void mod_mysql(ModuleCtx& ctx) {
             });
         }
     }
-    // general_log 内容取证：攻击者常 SELECT ... INTO OUTFILE 写 webshell（日志写马痕迹）
+    // general_log / slow log / binlog 内容取证：INTO OUTFILE、UDF、LOAD_FILE 等
     {
-        std::vector<std::string> glogs;
-        // 配置里可能指定 general_log_file
+        std::string datadir = "/var/lib/mysql";
+        std::vector<std::string> glogs, slogs, blogs;
         for (const auto& cf : confs) {
             ReadResult r = read_text_file(cf, 512 * 1024);
             if (!r.ok) continue;
             for (const auto& c : parse_conf(r.content)) {
-                if (c.key == "general_log_file" && !c.val.empty()) {
-                    std::string v = c.val;
-                    if (v.find('/') == std::string::npos)
-                        v = "/var/lib/mysql/" + v; // 相对名默认落在 datadir
-                    glogs.push_back(v);
+                auto loc = [&](std::string v) {
+                    if (v.size() >= 2 && ((v.front() == '"' && v.back() == '"') ||
+                                          (v.front() == '\'' && v.back() == '\'')))
+                        v = v.substr(1, v.size() - 2);
+                    if (!v.empty() && v.find('/') == std::string::npos)
+                        v = datadir + "/" + v;
+                    return v;
+                };
+                if (c.key == "datadir" && !c.val.empty()) datadir = loc(c.val);
+                if ((c.key == "general_log_file" || c.key == "general-log-file") && !c.val.empty())
+                    glogs.push_back(loc(c.val));
+                if ((c.key == "slow_query_log_file" || c.key == "slow-query-log-file" ||
+                     c.key == "slow_query_log" || c.key == "log_slow_queries") &&
+                    !c.val.empty() && c.val != "1" && c.val != "on" && c.val != "0" && c.val != "off")
+                    slogs.push_back(loc(c.val));
+                if ((c.key == "log_bin" || c.key == "log-bin" || c.key == "log_bin_basename") &&
+                    !c.val.empty() && c.val != "1" && c.val != "on") {
+                    std::string v = loc(c.val);
+                    blogs.push_back(v + ".index");
+                    blogs.push_back(v + ".000001");
+                    blogs.push_back(v);
                 }
             }
         }
-        // 常见默认路径兜底
-        for (const char* p : {"/var/log/mysql/mysql.log", "/var/log/mysql/general.log"}) {
+        for (const char* p : {"/var/log/mysql/mysql.log", "/var/log/mysql/general.log",
+                              "/var/lib/mysql/ctfir-general.log"})
             if (file_exists(p)) glogs.push_back(p);
+        for (const char* p : {"/var/log/mysql/mysql-slow.log", "/var/log/mysql/slow.log",
+                              "/var/lib/mysql/mysql-slow.log"})
+            if (file_exists(p)) slogs.push_back(p);
+        for (const auto& d : list_dir(datadir, 200)) {
+            std::string low = to_lower(d);
+            if (ends_with(low, ".log") && low.find("slow") != std::string::npos) slogs.push_back(d);
+            else if (ends_with(low, ".log") && low.find("error") == std::string::npos &&
+                     low.find("ib_") == std::string::npos) glogs.push_back(d);
+            if (ends_with(low, ".index") &&
+                (low.find("bin") != std::string::npos || low.find("relay") != std::string::npos))
+                blogs.push_back(d);
+            // mysql-bin.000001 / binlog.000001
+            size_t sl = d.find_last_of('/');
+            std::string base = sl == std::string::npos ? d : d.substr(sl + 1);
+            std::string blow = to_lower(base);
+            if (blow.find("mysql-bin.") == 0 || blow.find("binlog.") == 0 ||
+                blow.find("-bin.0") != std::string::npos)
+                blogs.push_back(d);
         }
-        for (const auto& d : list_dir("/var/lib/mysql", 100)) {
-            if (ends_with(to_lower(d), ".log")) glogs.push_back(d);
-        }
-        int scanned = 0;
-        for (const auto& gl : glogs) {
-            if (scanned >= 3) break; // 最多核对 3 个日志文件
-            ReadResult r = read_text_file(gl, 16 * 1024 * 1024);
-            if (!r.ok) continue;
-            ++scanned;
-            int outfile_hits = 0;
-            for_each_line(r.content, [&](int, const std::string& line) {
-                std::string low = to_lower(line);
-                if ((low.find("into outfile") != std::string::npos ||
-                     low.find("into dumpfile") != std::string::npos) &&
-                    (low.find(".php") != std::string::npos ||
-                     low.find(".jsp") != std::string::npos ||
-                     low.find("tmp") != std::string::npos ||
-                     low.find("var/www") != std::string::npos)) {
-                    ++outfile_hits;
-                    if (outfile_hits <= 3) {
+        auto scan_mysql_logs = [&](const std::vector<std::string>& files, const char* rule,
+                                   const char* label, int cap) {
+            std::set<std::string> seen;
+            int scanned = 0, hits = 0;
+            for (const auto& gl : files) {
+                if (scanned >= cap) break;
+                if (!seen.insert(gl).second) continue;
+                ReadResult r = read_text_file(gl, 16 * 1024 * 1024);
+                if (!r.ok) continue;
+                ++scanned;
+                ctx.planned_source(gl);
+                for_each_line(r.content, [&](int, const std::string& line) {
+                    std::string why;
+                    if (!mysql_log_suspicious(line, &why)) return;
+                    ++hits;
+                    if (hits <= 4) {
                         Finding f;
-                        f.rule_id = "MID.MYSQL.LOGSHELL.001";
+                        f.rule_id = rule;
                         f.severity = "high";
                         f.confidence = "medium";
-                        f.rationale = "MySQL general_log 中发现 INTO OUTFILE/DUMPFILE 写文件语句: " +
-                                      line.substr(0, 180) + "（日志写马/UDF 提权痕迹）";
+                        f.rationale = std::string("MySQL ") + label + " 中发现 " + why + ": " +
+                                      line.substr(0, 180) + "（写马/UDF/读文件痕迹——取证金矿）";
                         f.object_ref = gl;
                         f.advice_id = "ADVICE.WEBSHELL.REVIEW.001";
                         ctx.add_finding(f);
                     }
+                });
+                ctx.checked_source(gl);
+            }
+            if (scanned > 0)
+                ctx.checked_source(std::string("MySQL ") + label + " 内容取证（" +
+                                   std::to_string(scanned) + " 文件）");
+            return scanned;
+        };
+        scan_mysql_logs(glogs, "MID.MYSQL.LOGSHELL.001", "general_log", 4);
+        scan_mysql_logs(slogs, "MID.MYSQL.SLOWLOG.001", "slow log", 4);
+        int bscan = scan_mysql_logs(blogs, "MID.MYSQL.BINLOG.001", "binlog", 4);
+        if (bscan == 0) {
+            // 索引或文件存在但未解析出 SQL（ROW 格式无明文）——如实留证，不报 finding
+            for (const auto& b : blogs) {
+                if (file_exists(b)) {
+                    ctx.note("发现 MySQL binlog/index: " + b +
+                             "（ROW 格式需 mysqlbinlog 人工还原，工具只扫描 STATEMENT 明文）");
+                    ctx.checked_source(b);
+                    break;
                 }
-            });
+            }
         }
-        if (scanned > 0) ctx.checked_source("MySQL general_log 内容取证（" + std::to_string(scanned) + " 文件）");
     }
-    ctx.set_status(ModuleStatus::PASS);
+        ctx.set_status(ModuleStatus::PASS);
 }
 
 // ---- MID.PHP：php.ini 危险项 + phpinfo 文件 ----

@@ -12,3 +12,11 @@
 10. **性能**：单模块默认预算 30s，超预算如实 TIMEOUT 并列出未覆盖来源；全盘类操作不在范围内。
 11. **SAFER 受限令牌**：runas /trustlevel 下 TokenElevation 判定可能仍显示 admin（已知显示偏差），权限不足行为以模块 PERMISSION_DENIED 为准（实测正确）。
 12. **签名验证**：WinVerifyTrust 未接入 v0.1（W08 仅哈希留证）；目录签名/catalog 不支持时不得宣称"无签名"。
+
+## v0.6 补充（2026-11-12）
+
+13. **MySQL binlog ROW 格式**：工具只对 STATEMENT/MIXED 明文做关键字扫描（INTO OUTFILE / UDF / LOAD_FILE）。ROW 事件无 SQL 明文时只留证路径并 note，需人工用 `mysqlbinlog` 还原——不把"未命中"写成安全结论。
+14. **ADS 扫描范围**：仅当前用户 Desktop/Documents/Downloads、Public、Temp 一层，不递归全盘；Zone.Identifier 等系统良性流明确不报。
+15. **PowerShell 历史**：只读 PSReadLine `ConsoleHost_history.txt`（各用户 Roaming 路径）；不写、不改用户历史；Windows PowerShell 5 与 7 的其他历史文件不覆盖。
+16. **Web 日志攻击特征**：基于解码后的子串，无业务上下文；命中=线索。curl / python-requests UA 故意不报（运维脚本误报高）。
+17. **业务数据恢复**：不在工具范围（决赛指南该项属人工步骤）。动态流量、内存取证、内核 rootkit 仍不覆盖。

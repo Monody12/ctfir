@@ -1,5 +1,6 @@
 // Linux 痕迹模块族（v0.3 Phase2）：LNX.WEB / LNX.LOGINS(lastlog-wtmp) / ld.so.conf.d 注入
 #include "lnx_common.hpp"
+#include "core/log_attack.hpp"
 
 #include <cstring>
 #include <ctime>
@@ -109,49 +110,81 @@ void mod_web(ModuleCtx& ctx) {
         ctx.checked_source(root);
     }
     if (summary.empty()) ctx.note("未发现 web 根（nginx/apache 未装或非标路径）");
-    // access 日志（common/combined：首字段 IP，引号内 METHOD）
-    for (const char* lg : {"/var/log/nginx/access.log", "/var/log/httpd/access_log",
-                           "/var/log/apache2/access.log"}) {
-        ctx.planned_source(lg);
-        ReadResult r = read_text_file(lg, 16 * 1024 * 1024);
-        if (!r.ok) { ctx.checked_source(std::string(lg) + " [miss]"); continue; }
-        std::map<std::string, int> post_ip;
-        int posts = 0;
-        for_each_line(r.content, [&](int, const std::string& line) {
-            std::istringstream is(line);
-            std::string ip, junk, method;
-            if (!(is >> ip >> junk)) return;
-            // combined: IP - user [time] "METHOD ..."
-            size_t q = line.find('"');
-            if (q == std::string::npos) return;
-            std::istringstream rq(line.substr(q + 1));
-            rq >> method;
-            if (method == "POST") { ++posts; ++post_ip[ip]; }
-        });
-        if (posts > 0) {
-            std::string top;
-            for (const auto& [ip, cnt] : post_ip) top += ip + "×" + std::to_string(cnt) + " ";
+    // 访问日志分析：标准路径 + 宝塔 /www/wwwlogs（站点名为 example.com.log，不是 access.log）
+    // 同时做 POST Top IP（LNX.WEB.LOGPOST）与 GET/POST 攻击特征（LNX.WEB.LOGATTACK）
+    auto emit_web_log = [&](const std::string& path, const ReadResult& r) {
+        AccessLogSummary s;
+        for_each_line(r.content, [&](int, const std::string& line) { consume_combined_line(s, line); });
+        if (s.posts > 0 || s.attack_hits > 0) {
             Evidence le;
             le.source_kind = "file";
-            le.source_path = lg;
+            le.source_path = path;
             le.sha256 = r.raw_sha256;
-            le.payload = "POST=" + std::to_string(posts) + "\ntop_ip: " + top;
+            le.payload = "POST=" + std::to_string(s.posts) + " top_ip: " + top_ip_str(s.post_ip) +
+                         "\nattack=" + std::to_string(s.attack_hits) + " top_ip: " + top_ip_str(s.attack_ip);
+            if (!s.samples.empty()) {
+                le.payload += "\nsamples:\n";
+                for (const auto& sm : s.samples) le.payload += "  " + sm + "\n";
+            }
             std::string ev_id = ctx.add_evidence(le);
-            ctx.checked_source(lg);
-            if (posts >= 50) {
+            if (s.posts >= 50) {
                 Finding f;
                 f.rule_id = "LNX.WEB.LOGPOST.001";
                 f.severity = "low";
                 f.confidence = "medium";
-                f.rationale = "web 日志 POST 集中（" + std::to_string(posts) +
-                              " 次）：webshell 交互/上传线索；Top IP 见证据";
-                f.object_ref = lg;
+                f.rationale = "web 日志 POST 集中（" + std::to_string(s.posts) +
+                              " 次）：webshell 交互/上传线索；Top IP: " + top_ip_str(s.post_ip);
+                f.object_ref = path;
+                f.evidence_ids = {ev_id};
+                f.advice_id = "ADVICE.WEBSHELL.REVIEW.001";
+                ctx.add_finding(f);
+            }
+            if (s.attack_hits > 0) {
+                std::string kinds;
+                for (const auto& kv : s.attack_kind)
+                    kinds += kv.first + "x" + std::to_string(kv.second) + " ";
+                Finding f;
+                f.rule_id = "LNX.WEB.LOGATTACK.001";
+                f.severity = "medium";
+                f.confidence = "medium";
+                f.rationale = "web 访问日志发现 " + std::to_string(s.attack_hits) +
+                              " 条攻击特征（" + kinds + "）；Top IP: " + top_ip_str(s.attack_ip) +
+                              " 样本: " + (s.samples.empty() ? "" : s.samples.front()) +
+                              "（SQLi/目录穿越/webshell 访问/扫描器 UA——溯源攻击者）";
+                f.object_ref = path;
                 f.evidence_ids = {ev_id};
                 f.advice_id = "ADVICE.WEBSHELL.REVIEW.001";
                 ctx.add_finding(f);
             }
         }
+        ctx.checked_source(path);
+    };
+    auto scan_log_file = [&](const std::string& path) {
+        ctx.planned_source(path);
+        ReadResult r = read_text_file(path, 16 * 1024 * 1024);
+        if (!r.ok) { ctx.checked_source(path + " [miss]"); return; }
+        emit_web_log(path, r);
+    };
+    auto scan_log_dir = [&](const std::string& dir, int depth) {
+        for (const auto& bt : list_dir(dir, 200)) {
+            // 一层子目录（宝塔按站切目录 /www/wwwlogs/site/access-date.log）
+            if (depth > 0 && dir_readable(bt) && !is_web_access_log_name(bt)) {
+                // list_dir 返回文件路径；目录靠 dir_readable
+                for (const auto& sub : list_dir(bt, 200)) {
+                    if (is_web_access_log_name(sub)) scan_log_file(sub);
+                }
+                continue;
+            }
+            if (is_web_access_log_name(bt)) scan_log_file(bt);
+        }
+    };
+    scan_log_dir("/www/wwwlogs", 1);
+    for (const char* lg : {"/var/log/nginx/access.log", "/var/log/httpd/access_log",
+                           "/var/log/apache2/access.log", "/var/log/nginx/access.log.1",
+                           "/var/log/httpd/access_log.1", "/usr/local/nginx/logs/access.log"}) {
+        scan_log_file(lg);
     }
+
     Evidence e;
     e.source_kind = "dir";
     e.source_path = "LNX.WEB 汇总";

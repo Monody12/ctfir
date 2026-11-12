@@ -16,8 +16,13 @@
 | SSH 后门 | LNX.SSH.*（AUTHKEY/PRIVKEY/CONFIG） | sshkey | 指纹逐条核对；forced command 高危 |
 | preload/库劫持 | LNX.PERSIST.PRELOAD / LNX.LDSO.INJECT | preload | 配置行+库哈希；不加载不删除先取证 |
 | webshell | WIN.WEB.WEBSHELL / LNX.WEB.SHELL | webshell | 静态特征命中≠定罪；隔离先于删除 |
-| 攻击者 IP | WIN.WEB.LOGPOST / LNX.WEB.LOGPOST / WIN.EVT.AUTHFAIL / LNX.LOG.AUTHFAIL | log | POST Top IP + 4625/failed Top IP |
-| 攻击者执行了什么 | Prefetch/ShimCache/bash_history/wtmp/lastlog | log | 文件名即程序名；历史是线索非结论 |
+| 攻击者 IP | WIN.WEB.LOGPOST / LNX.WEB.LOGPOST / WIN.EVT.AUTHFAIL / LNX.LOG.AUTHFAIL | log | POST Top IP + 4625/failed Top IP；宝塔走 /www/wwwlogs |
+| 攻击者执行了什么 | Prefetch/ShimCache/bash_history/PS 历史/wtmp/lastlog | log | 文件名即程序名；历史是线索非结论 |
+| Web 日志攻击溯源 | LNX.WEB.LOGATTACK / WIN.WEB.LOGATTACK | log | URL SQLi、../ 穿越、webshell 文件访问、sqlmap 等 UA（含百分号解码） |
+| 服务安装后门时间 | WIN.EVT.SVC7045（System 7045 + Security 4697） | service | 时间即植入时间；与 WIN.SVC 当前配置互补 |
+| NTFS 隐藏文件 | WIN.FILES.ADS | hash | dir /r 或 FindFirstStreamW；忽略 Zone.Identifier |
+| SSH 密码记录后门 | LNX.PERSIST.SSHLOG（/tmp/.sshlog） | sshkey | PAM 后门产物；只报路径不入库口令 |
+| 数据库日志写马 | MID.MYSQL.LOGSHELL / SLOWLOG / BINLOG | webshell | general/slow 明文；binlog ROW 需人工 mysqlbinlog |
 | U 盘取证 | WIN.USB（USBSTOR） | log | 配合 setupapi.dev.log 看时间 |
 | 哈希比对/文件篡改 | --baseline + WIN.FILES.BASELINE / LNX.FILES.BASELINE | hash | 自带基线清单文件即可判定 |
 | 服务后门 | WIN.SVC.SUSPECT / WIN.DRV.WRITABLE | service | 可写路径+未引号+签名三看 |

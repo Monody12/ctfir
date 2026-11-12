@@ -337,6 +337,43 @@ void mod_tools(ModuleCtx& ctx) {
     ctx.set_status(ModuleStatus::PASS);
 }
 
+// ---- LNX.SSHLOG：SSH 密码记录后门痕迹（玄机：PAM/cron 把登录密码写到 /tmp/.sshlog）----
+void mod_sshlog(ModuleCtx& ctx) {
+    std::set<std::string> seen;
+    auto report = [&](const std::string& p, const char* conf, const std::string& why) {
+        if (!seen.insert(p).second) return;
+        ReadResult r = read_text_file(p, 1024 * 1024);
+        Finding f;
+        f.rule_id = "LNX.PERSIST.SSHLOG.001";
+        f.severity = "high";
+        f.confidence = conf;
+        // 只报路径与大小，不把口令正文写入证据（红线：不保存密码）
+        f.rationale = why + p +
+                      (r.ok ? "（" + std::to_string(static_cast<int>(r.raw_size)) + " 字节，内容不入库）"
+                            : "（存在但不可读）") +
+                      "——键盘记录/凭据窃取后门产物，按文件时间戳回溯攻击窗口";
+        f.object_ref = p;
+        f.evidence_paths = {p};
+        f.advice_id = "ADVICE.ACC.REVIEW.001";
+        ctx.add_finding(f);
+    };
+    for (const char* p : {"/tmp/.sshlog", "/var/tmp/.sshlog", "/dev/shm/.sshlog",
+                          "/root/.sshlog", "/tmp/.ssh_log", "/var/tmp/.pam_pass"}) {
+        if (file_exists(p))
+            report(p, "high", "SSH/PAM 密码记录文件: ");
+    }
+    // 记录型脚本常见落点（配合 cron 特征 token sshlog）；已报路径跳过，避免双计
+    for (const auto& p : list_dir("/tmp", 300)) {
+        std::string base = to_lower(p.substr(p.find_last_of('/') + 1));
+        if (base.find("sshlog") == std::string::npos && base.find("ssh-log") == std::string::npos &&
+            base.find("pam_pass") == std::string::npos)
+            continue;
+        if (!file_exists(p)) continue;
+        report(p, "medium", "疑似 SSH 凭据记录文件: ");
+    }
+    ctx.set_status(ModuleStatus::PASS);
+}
+
 } // namespace
 
 void register_mods_h(std::vector<Session::ModuleDef>& mods) {
@@ -348,6 +385,7 @@ void register_mods_h(std::vector<Session::ModuleDef>& mods) {
     mods.push_back({"LNX.MYSQL.SOCK", "1.0.0", "linux", [](ModuleCtx& c) { mod_mysql_socket(c); }});
     mods.push_back({"LNX.RANSOM", "1.0.0", "linux", [](ModuleCtx& c) { mod_ransom(c); }});
     mods.push_back({"LNX.TOOLS", "1.0.0", "linux", [](ModuleCtx& c) { mod_tools(c); }});
+    mods.push_back({"LNX.SSHLOG", "1.0.0", "linux", [](ModuleCtx& c) { mod_sshlog(c); }});
 }
 
 } // namespace ctfir::lnx

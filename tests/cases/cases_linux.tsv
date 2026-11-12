@@ -40,3 +40,13 @@ L37	hosts-ip6-localnet-default	(none)	neg	six
 L38	docker-hostname-line-explained	(none)	neg	six
 L39	hidepid-denied	PERMISSION_DENIED	neg	manual
 L40	nobody-fault-restricted	PARTIAL-session	neg	cb
+L41	sshlog-tmp-dotfile	LNX.PERSIST.SSHLOG.001	pos	cb
+L42	sshlog-absent-clean	(none)	neg	cb
+L43	baota-wwwlogs-post-topip	LNX.WEB.LOGPOST.001	pos	cb
+L44	baota-wwwlogs-get-sqli	LNX.WEB.LOGATTACK.001	pos	cb
+L45	access-log-normal-get-neg	(none)	neg	cb
+L46	mysql-slow-outfile	MID.MYSQL.SLOWLOG.001	pos	cb
+L47	mysql-binlog-udf	MID.MYSQL.BINLOG.001	pos	cb
+L48	mysql-slow-normal-select	(none)	neg	manual
+L49	logattack-traversal-encoded	LNX.WEB.LOGATTACK.001	variant	cb
+L50	logattack-sqlmap-ua	LNX.WEB.LOGATTACK.001	variant	cb

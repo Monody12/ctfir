@@ -401,3 +401,34 @@ elease\）**：
 **测台第三踩 pipefail**：fchk 的 `grep -c` 零计数 exit 1 → 管道整体非零误判 FAIL；改为输出落盘 + `|| true` 兜底
 
 **fix --all 闭环（centos-ir-lab 61/61 全绿）**：构造 15 类后门 → 扫描（195 findings）→ fix --all --yes（执行 35/不支持 51）→ **逐项环境恢复检查 18/18**（账户已删/行已注释/文件已隔离/进程已杀/root 幸存/测台脚本幸存）→ 清理复验 ✓
+
+## 2026-11-12 v0.6（#39：R16 收尾 + 日志取证补漏 + 版本 0.6）
+
+**范围**：
+- 收尾未提交的 R16 五点并修缺陷：System 7045 保留、Security 改查 4697（7045 不在 Security 通道）；PS 历史改用共享匹配（补 IEX(/FromBase64 等）；ADS 跳过 Zone.Identifier 防 Downloads 误报；SSHLOG 去重且口令不入库；宝塔日志按 `{site}.log` 识别（不再误过滤成只认 access.log），并与标准 access 日志共用 POST + 攻击特征分析。
+- 考点补漏：`LNX.WEB.LOGATTACK.001` / `WIN.WEB.LOGATTACK.001`（SQLi、目录穿越、webshell 文件访问、扫描器 UA，含百分号/双重编码）；`MID.MYSQL.SLOWLOG.001` / `MID.MYSQL.BINLOG.001`（明文关键字；ROW 格式只留证）。
+- 版本：kToolVersion 0.5.0 → **0.6.0**，规则包 4.0.0 → **6.0.0**，检测点 132 → **142**。
+
+**单测（本轮）**：
+- Windows（含 Win 专有 extract_paths）：**54/54**（原 22 + 本轮 log_attack/PSHIST/ADS/MySQL/宝塔文件名 32 条，全部 PASS）
+- Linux musl 静态（无 Win 专有 4 条）：**50/50** PASS；ldd = Not a valid dynamic program（纯静态）
+
+**夹具回归（本轮）**：
+- Alpine 一次性容器（tests/fixture_linux.sh）：**31/31**（原约 24；新增 SSHLOG/LOGPOST/LOGATTACK/SLOWLOG/BINLOG 正例 + 对应负例；清理复验无残留；nobody 低权限 exit=2 / PERMISSION_DENIED / PARTIAL）
+- centos-ir-lab（fixture_builder_centos.sh，centos7-full）：**65/65**（历史断言全绿 + v0.6 SSHLOG / LOGATTACK / SLOWLOG / BINLOG；fix 闭环 18 项含 root 未被删除、install/cleanup 幸存；清理复验无 ctfir-marker 残留）。第一次因 Git Bash 把 /d/... 传给 docker cp 成 C:\d 导致二进制未进容器（exit=127），改用 D:/ctfir-build/linux/ctfir 后全绿——非规则漏检。
+- 未解释误报：**0**（干净环境无 marker；Zone.Identifier 不报；普通 SELECT / 业务词 union / curl UA 单测负例通过）
+
+**Windows 开发机只读冒烟（2026-11-12 16:06 北京时间）**：
+- 会话 tool_version=0.6.0、rule_pack_version=6.0.0、overall=COMPLETE
+- WIN.EVTLOG：System 7045 查询成功（本机 70 条历史服务安装，无指向可写路径/解释器/Mysql 伪装，0 误报）；Security 通道可读
+- WIN.TRACE.PSHIST：扫描到 1 个历史文件，本机真实历史命中 5 条（按设计，非夹具）
+- WIN.FILES.ADS：Temp 下 ctfir-marker-ads.txt:hidden.exe 正例命中 1；同目录 Zone.Identifier 负例不报；测后已删除夹具文件
+- WIN.WEB：本机无 IIS/phpstudy 日志，模块 PASS 并如实 [not_found]
+
+**发布（v0.6.0 / 规则包 6.0.0）**，路径 D:\ctfir-build\release\，BUILDINFO.built_utc=2026-11-12T08:06:50Z（北京 16:06）：
+- ctfir-v0.6-windows-x64.zip  973830 字节  sha256 46a84c888dfe7f0b9afcdcef6195b720782939c7eced9f0c9ba988d21220461
+- ctfir-v0.6-linux-x86_64.zip 1418459 字节 sha256 e096d1e5b74d5f5af78b4c56d5004551c6e71ba66e2a094e22e5f0c8918040b
+- 导入面：ctfir.exe = KERNEL32+SHELL32+ole32+OLEAUT32+ADVAPI32+NETAPI32+IPHLPAPI+WS2_32+wevtapi（零 CRT 运行时）；Linux 纯静态 musl
+- **未 git push、未创建 GitHub Release**——待确认后再做。
+
+

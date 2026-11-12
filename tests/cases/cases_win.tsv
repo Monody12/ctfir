@@ -47,3 +47,13 @@ F32	wmi-cmdline-collect	(evidence)	fact	six
 F33	host-file-gbk-encoding	(none)	variant	manual
 F34	host-crlf-lineendings	(none)	variant	six
 F35	denied-source-not-pass	PERMISSION_DENIED	neg	six
+F36	evt7045-service-writable	WIN.EVT.SVC7045.001	pos	manual
+F37	evt7045-system-service-neg	(none)	neg	manual
+F38	pshist-encodedcommand	WIN.TRACE.PSHIST.001	pos	manual
+F39	pshist-normal-getchilditem	(none)	neg	manual
+F40	ads-hidden-exe-stream	WIN.FILES.ADS.001	pos	six
+F41	ads-zone-identifier-neg	(none)	neg	six
+F42	ads-favicon-neg	(none)	neg	six
+F43	iis-log-get-sqli	WIN.WEB.LOGATTACK.001	pos	manual
+F44	iis-log-normal-get-neg	(none)	neg	manual
+F45	phpstudy-access-sqlmap-ua	WIN.WEB.LOGATTACK.001	variant	manual

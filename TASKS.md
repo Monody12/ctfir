@@ -3,6 +3,8 @@
 状态枚举：TODO / IN_PROGRESS / BLOCKED / IMPLEMENTED_NOT_TESTED / PASSED / FAILED / DEFERRED
 来源：PLAN.md §13（T25 为 v0.3 新增）。验收定义见 PLAN 对应行。
 
+**v0.6（2026-11-12）**：R16 五点 + Web GET 日志攻击 + MySQL slow/binlog 已实现并回归，见 TEST_RESULTS #39。历史 T03–T25 表未逐行回写（早期里程碑已在 STATUS/TEST_RESULTS 闭合）。
+
 | ID | 任务 | 依赖 | 状态 | 证据 |
 |---|---|---|---|---|
 | T01 | 资源/授权/范围台账 | — | PASSED | AGENTS.md 环境事实；PLAN §12.1 v0.3 实测块 |

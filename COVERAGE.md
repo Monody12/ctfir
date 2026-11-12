@@ -3,11 +3,11 @@
 状态：NOT_TESTED / BUILT_NOT_RUN / PASSED / FAILED / DEFERRED / NOT_IMPLEMENTED
 规则：未测格不写 PASSED；无基线不下完整性结论；每格有证据指针（TEST_RESULTS.md #编号）。
 
-## M0—M8 终态矩阵（2026-11-09，详见 TEST_RESULTS #10-#20）
+## v0.6 终态（2026-11-12，详见 TEST_RESULTS #39）
 
-- **模块实现：Windows 10/10（A6+B4 含 W13）；Linux 12/12（A7+B5 含 L13）；规则 35 条全部有样本**
-- 非功能：JSONL 事件流 / 取消保 partial / 超时预算 / 原子写 / integrity.sha256 / explain+report 离线链 / GUI 复制建议
-- C 级 DEFERRED：W10 WMI、W11 深SAM、W12 策略、L12 网络策略（发布说明如实标注）
+- 规则以**代码**为准（`rule_id =` / `finding_kv`）；文档可能滞后。v0.6 新增：WIN.EVT.SVC7045 / WIN.TRACE.PSHIST / WIN.FILES.ADS / LNX.PERSIST.SSHLOG / LNX.WEB.LOGATTACK / WIN.WEB.LOGATTACK / MID.MYSQL.SLOWLOG / MID.MYSQL.BINLOG；宝塔日志接入 LOGPOST 路径扩展。
+- 原先标 DEFERRED 的 W10 WMI：代码已实现（WIN.BASE.WMICONSUMER 等），以代码为准。
+- C 级仍 DEFERRED：深层 SAM/RID 劫持、内核 rootkit、内存取证、磁盘镜像模式、业务数据恢复、ROW binlog 完整还原。
 
 ## M0 兼容矩阵（2026-11-08）
 

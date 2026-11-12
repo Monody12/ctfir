@@ -75,6 +75,14 @@ printf 'fscan binary' > /opt/fscan_amd64
 printf '[common]\nserver_addr = 10.11.55.21\nserver_port = 7000\n' > /tmp/frpc.ini
 mkdir -p /root/.ssh
 printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFAKEFAKEFAKE ctfir-marker@kali\n' > /root/.ssh/.id_rsa.pub
+# --- v0.6-R16: SSHLOG / 宝塔 wwwlogs / GET 攻击特征 / slow+binlog ---
+printf 'ctfir-marker : (redacted)\n' > /tmp/.sshlog
+mkdir -p /www/wwwlogs /var/log/mysql
+i=0; while [ $i -lt 60 ]; do echo '10.88.88.88 - - [12/Nov/2026:10:00:00 +0800] "POST /ctfir-marker-bt.php HTTP/1.1" 200 -' >> /www/wwwlogs/ctfir-marker.com.log; i=$((i+1)); done
+echo '10.88.88.88 - - [12/Nov/2026:10:01:00 +0800] "GET /index.php?id=1%20UNION%20SELECT%201,2,3 HTTP/1.1" 200 12 "-" "sqlmap/1.7"' >> /www/wwwlogs/ctfir-marker.com.log
+echo '10.77.77.77 - - [12/Nov/2026:10:02:00 +0800] "GET /static/../../etc/passwd HTTP/1.1" 200 - "-" "Mozilla/5.0"' >> /www/wwwlogs/ctfir-marker.com.log
+printf '# Time: 2026-11-12T10:00:00\nSELECT "<?php eval($_POST[1]);?>" INTO OUTFILE "/var/www/html/ctfir-marker-slow.php";\n' > /var/log/mysql/mysql-slow.log
+printf 'Query\tCREATE FUNCTION sys_eval RETURNS STRING SONAME "udf.so"\n' > /var/lib/mysql/mysql-bin.000001
 echo INSTALL_DONE
 FIXEOF
 
@@ -100,6 +108,8 @@ rm -f /etc/pam.d/ctfir-marker-pam /etc/profile.d/ctfir-marker-umask.sh \
 sed -i '/^PasswordAuthentication yes$/d' /etc/ssh/sshd_config 2>/dev/null || true
 rm -f /usr/lib/mysql/plugin/udf.so /var/log/mysqld.log /opt/fscan_amd64 /tmp/frpc.ini /root/.ssh/.id_rsa.pub
 rm -f /var/www/html/index.php
+rm -f /tmp/.sshlog /www/wwwlogs/ctfir-marker.com.log /var/log/mysql/mysql-slow.log /var/lib/mysql/mysql-bin.000001
+rmdir /www/wwwlogs /www 2>/dev/null || true
 [ -f /usr/bin/ls.ctfir-bak ] && mv -f /usr/bin/ls.ctfir-bak /usr/bin/ls
 # argv[0] 伪装使 pgrep -f 失效，改用 exe 符号链接定位（检测同款思路）
 for pd in /proc/[0-9]*; do
@@ -192,6 +202,11 @@ a "LNX.WEB.BLACKLINK.001"       "黑链命中"               "黑链漏检"
 a "LNX.TOOLS.ARTIFACT.001"      "fscan 工具命中"         "工具文件漏检"
 a "LNX.TOOLS.FRPCFG.001"        "frpc 配置命中"          "frpc 漏检"
 a "LNX.SSH.HIDDENKEY.001"       "点开头公钥命中"         "隐藏 key 漏检"
+echo "--- v0.6 SSHLOG/宝塔日志/GET攻击/slow+binlog ---"
+a "LNX.PERSIST.SSHLOG.001"      "SSHLOG 命中"            "SSHLOG 漏检"
+a "LNX.WEB.LOGATTACK.001"       "GET 攻击特征命中"       "LOGATTACK 漏检"
+a "MID.MYSQL.SLOWLOG.001"       "slow log 写马命中"      "slow log 漏检"
+a "MID.MYSQL.BINLOG.001"        "binlog UDF 命中"        "binlog 漏检"
 grep -q "ADVICE" "$RESF" && ok "建议挂接" || bad "建议缺失"
 
 echo "=== 阶段3.5：fix 一键修复闭环（识别→修复→环境恢复逐项检查）==="
