@@ -13,7 +13,18 @@ except ImportError:
     raise SystemExit("python 3.6+ required")
 
 
+def _stdio_utf8():
+    # GitHub Windows runner 默认 cp1252，print 中文文件名会 UnicodeEncodeError，
+    # 而 zip 此时已经写完——必须先改 stdout 再列目录。
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
 def main():
+    _stdio_utf8()
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", required=True, help="directory whose *contents* go into the zip")
     ap.add_argument("--out", required=True, help="output .zip path")
