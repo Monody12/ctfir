@@ -1,0 +1,123 @@
+# 每次 push/PR 构建双平台产物，上传 Artifact（无需打 tag 即可下载 exe）
+# Windows 钉 windows-2022 + VS2022，避免 windows-latest(VS18) 丢掉 Win7 目标
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version stamp
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            ver="${GITHUB_REF_NAME#v}"
+          else
+            ver=$(sed -n 's/.*kToolVersion = "\([^"]*\)".*/\1/p' core/model.hpp | head -1)
+            ver="${ver}-${GITHUB_SHA:0:7}"
+          fi
+          echo "ver=$ver" >> "$GITHUB_OUTPUT"
+          echo "version=$ver"
+
+      - name: Build & test（Alpine builder 容器，与本地 build-linux.sh 同镜像）
+        run: |
+          docker build -f docker/builder.Dockerfile -t ctfir-builder:ci .
+          mkdir -p out-linux
+          docker run --rm -v "$PWD":/src:ro -v "$PWD/out-linux":/out ctfir-builder:ci sh -c '
+            cmake -S /src -B /tmp/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_CXX_FLAGS="-static" -DCMAKE_EXE_LINKER_FLAGS="-static" > /tmp/cfg.log &&
+            cmake --build /tmp/build &&
+            /tmp/build/ctfir_tests &&
+            echo ==LINUX_CI_BUILD_OK== &&
+            cp /tmp/build/ctfir /tmp/build/ctfir_tests /out/ &&
+            (ldd /out/ctfir 2>&1 || true) | head -1'
+
+      - name: Stage package
+        run: bash scripts/package-ci.sh --platform linux-x86_64 --ver "${{ steps.meta.outputs.ver }}" --out staging --bin out-linux/ctfir
+
+      - name: Zip
+        run: |
+          (cd staging && zip -qr "../ctfir-v${{ steps.meta.outputs.ver }}-linux-x86_64.zip" .)
+          sha256sum "ctfir-v${{ steps.meta.outputs.ver }}-linux-x86_64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-zip
+          path: ctfir-v*-linux-x86_64.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+          vsversion: "2022"
+
+      - name: Toolchain stamp
+        shell: bash
+        run: |
+          echo "VisualStudioVersion=${VisualStudioVersion:-unset}"
+          echo "VCToolsVersion=${VCToolsVersion:-unset}"
+          where cl
+
+      - name: Version stamp
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            ver="${GITHUB_REF_NAME#v}"
+          else
+            ver=$(sed -n 's/.*kToolVersion = "\([^"]*\)".*/\1/p' core/model.hpp | head -1)
+            ver="${ver}-${GITHUB_SHA:0:7}"
+          fi
+          echo "ver=$ver" >> "$GITHUB_OUTPUT"
+          echo "version=$ver"
+
+      - name: Build（Ninja + msvc-dev-cmd；/MT 与 WINVER 由 CMakeLists 定义）
+        shell: bash
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+
+      - name: Unit tests
+        shell: bash
+        run: ./build/ctfir_tests.exe
+
+      - name: Verify 零依赖（dumpbin 依赖面）
+        shell: bash
+        run: |
+          dumpbin //dependents build/ctfir.exe | head -30
+
+      - name: Stage package
+        shell: bash
+        run: bash scripts/package-ci.sh --platform windows-x64 --ver "${{ steps.meta.outputs.ver }}" --out staging --bin build/ctfir.exe build/ctfir-gui.exe
+
+      - name: Zip（Python zipfile UTF-8；不用 tar -a / Compress-Archive）
+        shell: bash
+        run: python scripts/zip-utf8.py --root staging --out "ctfir-v${{ steps.meta.outputs.ver }}-windows-x64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: ctfir-v*-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14

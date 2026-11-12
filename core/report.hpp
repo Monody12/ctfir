@@ -1,5 +1,5 @@
 #pragma once
-// 报告：JSON 终报（单对象）+ 自包含 HTML（零外部资源、全转义、无 JS）。
+// 报告：JSON 终报（单对象）+ 自包含 HTML（零外部资源、全转义、允许内联 JS）。
 #include "model.hpp"
 #include "session.hpp"
 #include "advice.hpp"

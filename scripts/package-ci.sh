@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # CI 打装脚本（package.sh 的便携版）：组装单平台发布目录 + SHA256SUMS
 # 用法: package-ci.sh --platform windows-x64|linux-x86_64 --ver <版本> --out <staging目录> --bin <可执行文件...>
-# zip 由各平台 job 用原生工具完成（windows 用 Compress-Archive，linux 用 zip）
+# zip 由各平台 job 完成：Windows 用 scripts/zip-utf8.py（UTF-8 文件名），Linux 用 zip
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

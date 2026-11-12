@@ -6,7 +6,7 @@
 
 ## 三条铁律
 
-1. **只读**：本工具不修改系统任何配置；无 fix/apply；建议仅供复制参考。
+1. **只读**：GUI 不修改系统；无修复按钮。CLI `fix` 为可选白名单且需确认。建议仅供复制参考。
 2. **离线**：不联网、不下载、不上传；报告零外部资源。
 3. **如实**：任何未扫/受限/失败项都在"未完成检查"中列出；PASS 不等于系统安全。
 
@@ -15,11 +15,14 @@
 1. 复制整个目录到**目标机本地**（不要在共享盘直接运行）。
 2. 核对 `SHA256SUMS`（`certutil -hashfile ctfir.exe SHA256`）。
 3. 双击 `ctfir-gui.exe` → 选择输出目录 → 「开始只读扫描」。
+   默认视图把账户清单等事实项藏起来，先看「立刻清」；切「全部」找回。
    无管理员权限也能运行：受限模块会如实标注 PERMISSION_DENIED。
-4. 打开输出目录中 `report.html`（浏览器离线查看，Ctrl+F 搜索）。
+4. 打开输出目录中 `report.html`：顶部是处置清单（中文标题 + 一条命令）。
+   个人赛/团队赛主机侧都跑全量；Linux 用 `--profile full`。
 
-命令行：`ctfir.exe scan --out C:\ctfir-out`；`ctfir.exe explain --session <目录> --finding <规则ID>`；
-`ctfir.exe report --session <目录> --redact`。
+命令行：`ctfir.exe scan --out C:\ctfir-out`；`ctfir.exe actions --session <目录> --bucket clear`（打印立刻清命令，不执行）；
+`ctfir.exe explain --session <目录> --finding <规则ID>`；`ctfir.exe report --session <目录> --redact`。
+GUI **没有**修复按钮，也不做 360/SFC 一键系统修复。
 
 ## 快速开始（Linux）
 

@@ -6,3 +6,8 @@ build/
 out/
 session-*/
 *.log
+.tmp-v07/
+ci-pkg/
+ci-sums.txt
+ci-win.zip
+rel.json

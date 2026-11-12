@@ -8,7 +8,7 @@
 namespace ctfir {
 
 constexpr int kSchemaVersion = 1;
-constexpr const char* kToolVersion = "0.6.1";
+constexpr const char* kToolVersion = "0.7.0";
 
 struct Evidence {
     std::string evidence_id;

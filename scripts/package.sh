@@ -2,7 +2,7 @@
 # ctfir 发布打包（WP8）：双平台 ZIP + SHA256SUMS + BUILDINFO + SBOM
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VER="0.6.1"
+VER="0.7.0"
 STAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 REL="/d/ctfir-build/release"
 rm -rf "$REL"; mkdir -p "$REL/win-x64" "$REL/linux-x86_64"
@@ -26,7 +26,7 @@ cat > "$d/使用说明.html" <<'HTML'
 <style>body{font-family:"Microsoft YaHei",sans-serif;max-width:860px;margin:24px;line-height:1.7}h1{border-bottom:2px solid #345;padding-bottom:6px}code{background:#f4f4f4;padding:1px 5px}</style></head>
 <body><h1>ctfir 使用说明（离线版）</h1>
 <p>ctfir 是<b>只读</b>应急扫描工具：不修改系统、不联网、建议仅供人工参考。</p>
-<h2>Windows GUI</h2><ol><li>复制目录到目标机本地并核对 SHA256SUMS；</li><li>运行 ctfir-gui.exe → 选输出目录 → 「开始只读扫描」；</li><li>看模块表/发现列表/详情（证据+建议）；点「复制建议」仅复制文本；</li><li>输出目录 report.html 双击离线查看。</li></ol>
+<h2>Windows GUI</h2><ol><li>复制目录到目标机本地并核对 SHA256SUMS；</li><li>运行 ctfir-gui.exe → 选输出目录 → 「开始只读扫描」；</li><li>看处置清单（优先级/一条命令）；点列头排序；「复制命令」只复制文本，无修复按钮；</li><li>输出目录 report.html 双击离线查看。</li></ol>
 <h2>CLI</h2><pre>ctfir doctor
 ctfir scan --out 目录
 ctfir explain --session 目录 --finding 规则ID

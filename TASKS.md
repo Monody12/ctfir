@@ -3,6 +3,13 @@
 状态枚举：TODO / IN_PROGRESS / BLOCKED / IMPLEMENTED_NOT_TESTED / PASSED / FAILED / DEFERRED
 来源：PLAN.md §13（T25 为 v0.3 新增）。验收定义见 PLAN 对应行。
 
+**v0.7.0（2026-11-12）**：处置工作台（个人防护 / 团队综合 / 全部）。见 TEST_RESULTS #41。GUI 无写动作。JW2026-WIN7-01 **待练题，勿清**。
+
+| ID | 任务 | 依赖 | 状态 | 证据 |
+|---|---|---|---|---|
+| T26 | 处置工作台（triage + display_action + HTML + GUI + CLI 清单） | T17,T18 | **PASSED** | TEST_RESULTS #41：单测 66/0；Win7 立刻清 25 / 再加固 13 / 溯源 17 / Web 0 / 清单 18 / 合计 73；W1–W13 默认队列均有已填命令 |
+| T27 | CI 修复 + 宿主兼容警告 + `ctfir actions` + Linux 0.7.0 回归 | T26 | **PASSED** | TEST_RESULTS #42；ADR-010 |
+
 **v0.6（2026-11-12）**：R16 五点 + Web GET 日志攻击 + MySQL slow/binlog 已实现并回归，见 TEST_RESULTS #39。历史 T03–T25 表未逐行回写（早期里程碑已在 STATUS/TEST_RESULTS 闭合）。
 
 | ID | 任务 | 依赖 | 状态 | 证据 |
@@ -47,5 +54,6 @@
 | 2026-11-09 | RDP 临时开启(fDenyTSConnections+防火墙) | 视觉验收通道 | 已回滚(=1+规则禁用) |
 | 2026-11-09 | centos-ir-lab 容器内 ctfir-marker 全套(UID0/cron/hosts/webshell/shadow/caps/timer/at/基线) | LNX 新规则正例 | 已清理复验(15/15) |
 | 2026-11-09 | A7C9 夹具(外部AI部署, 仅只读断言未动) | 八项对接 | 保留待用户 Cleanup 决定 |
+| 2026-11-12 | JW2026-WIN7-01 练习套（用户 ctfir-marker$、Guest→Admins、Run/任务/服务/IFEO/登录脚本、hosts 10.66.0.88、portproxy 13389、Temp/桌面文件+ADS、共享、EnableLUA=0、LimitBlankPasswordUse=0） | 经纬杯安全防护赛 Win7 主机题 | **待练题，勿清**；还原用 `C:\ctfir-test\jw2026_win7_01_cleanup.cmd` |
 
 备注：M0 在 Win7 VM 仅建立 `C:\ctfir-test\` 部署目录并运行只读 PoC（未建夹具）。

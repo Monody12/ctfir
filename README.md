@@ -10,7 +10,7 @@
 2. **离线**——代码中零网络 API；报告零外部资源，可断网打开。
 3. **如实**——PASS 只代表"声明范围内未命中"；权限不足 / 超时 / 未覆盖项全部如实列出，不充当安全结论。
 
-- **当前版本**：v0.6.1（规则包 6.0.1，2026-11-12）｜ 许可证 [MIT](LICENSE)
+- **当前版本**：v0.7.0（规则包 6.0.1，2026-11-12）｜ 许可证 [MIT](LICENSE)
 - **支持平台**：Windows 7 SP1+ x64 / Windows 10/11 x64（GUI + CLI）；Linux x86_64 静态二进制（CLI，CentOS 7 用户态已验）
 - **完整兼容矩阵**：[packaging/COMPATIBILITY.md](packaging/COMPATIBILITY.md) ｜ 已知限制：[packaging/KNOWN_LIMITATIONS.md](packaging/KNOWN_LIMITATIONS.md)
 
@@ -20,26 +20,29 @@
 
 ### 1.1 获取
 
-- 从 [Releases](https://github.com/Monody12/ctfir/releases) 下载对应架构包（`ctfir-v0.6.1-windows-x64.zip` / `ctfir-v0.6.1-linux-x86_64.zip`），或自行构建（见开发者章节）。
+- 从 [Releases](https://github.com/Monody12/ctfir/releases) 下载对应架构包（`ctfir-v0.7.0-windows-x64.zip` / `ctfir-v0.7.0-linux-x86_64.zip`），或自行构建（见开发者章节）。
+- 每次推送 `main` 会跑 [Actions/ci](https://github.com/Monody12/ctfir/actions/workflows/ci.yml)：打开最新成功 run → Artifacts 下载 `windows-zip` / `linux-zip`（需登录 GitHub）。打 `v*` tag 才会发 Release。
 - 复制整个目录到**目标机本地**（不要在共享盘直接运行），核对 `SHA256SUMS`。
 
 ### 1.2 图形界面（Windows）
 
 双击 `ctfir-gui.exe`：
 
-1. 顶栏会显示系统版本 / 位数 / 权限 / `[离线] [只读模式]` 标识；
-2. 选择输出目录 → 点「开始只读扫描」；无管理员权限也能运行，受限模块会如实标注 `PERMISSION_DENIED`；
-3. 发现列表点击任意条目 → 详情区展示证据原文、误报边界、处置建议；「复制建议」只复制文本；
-4. 报告在输出目录：`report.html`（断网双击可看，Ctrl+F 检索）。
+1. 顶栏显示系统版本 / 权限 / 只读标识；窗口可缩放。
+2. 选择输出目录 → 「开始只读扫描」。GUI **始终全量扫描**（含 Web/日志/中间件，团队赛不要用 quick）。
+3. 默认「个人防护」视图：立刻清 / 再加固 / 溯源在前，账户清单等事实项默认隐藏，切「全部」找回。
+4. 列：优先级、风险、中文标题、对象、一条已填对象的命令。点列头排序；「复制命令」只复制文本，**没有修复按钮**。
+5. 报告在输出目录 `report.html`：顶部就是处置清单。
 
 ### 1.3 命令行（Windows / Linux 同构）
 
 ```bash
-ctfir doctor                                  # 环境自检：OS/权限/已注册模块
+ctfir doctor                                  # 环境自检：OS/权限/兼容性/已注册模块
 ctfir scan --out ./out                        # 全量只读扫描
 ctfir scan --out ./out --profile quick        # 快速档：只跑核心模块
 ctfir scan --out ./out --dir /var/www         # 附加巡检目录
 ctfir scan --out ./out --baseline hashes.txt  # 哈希基线比对（"路径 sha256" 每行）
+ctfir actions --session ./out --bucket clear  # 打印立刻清命令（不执行，比赛急救箱）
 ctfir explain --session ./out --finding <规则ID>   # 单条发现的证据+处置详解
 ctfir report  --session ./out --redact        # 重新生成脱敏 HTML 报告
 ctfir diff --a ./out-before --b ./out-after   # 处置前后复查：哪些消失/新出现
@@ -55,13 +58,13 @@ ctfir help                                    # 应急响应 15 分钟总纲
 
 | 报告区块 | 含义 |
 |---|---|
-| 模块总览 | 每个模块的完成来源数 / 耗时 / 是否有线索 / 漏项与错误——**先看这里** |
-| 发现 | 按"规则 ID + 风险 + 置信度 + 位置"列出；命中≠定罪，每条都附误报边界 |
+| 处置清单 | **先看这里**：优先级、中文标题、对象、一条已填名的命令 |
+| 发现详情 | 依据 / 证据 / 六步手册；决赛持久化提示须删除而非注释 |
+| 模块总览 | 完成来源数 / 耗时 / 漏项（折叠） |
 | 未完成检查 | 权限不足 / 超时 / 不适用——这些不是安全结论 |
-| 处置手册 | 六步制：**核实 → 留证 → 停用 → 清除 → 验证 → 复盘**，精确命令文本，停用先于删除 |
-| 证据清单 | 每条证据的来源 / SHA256 / 留证文件，`integrity.sha256` 保证报告自洽 |
+| 证据清单 | 来源 / SHA256 / 留证文件 |
 
-比赛场景建议：`--profile quick` 先跑一遍拿主线索 → 按处置手册人工清除 → `diff` 复查 → `--profile full` 终扫。考点↔规则对照见 [docs/KNOWLEDGE-MAP.md](docs/KNOWLEDGE-MAP.md)。
+个人赛与团队赛主机侧都用 `--profile full`（`quick` 不含 Web/中间件）。考点对照见 [docs/KNOWLEDGE-MAP.md](docs/KNOWLEDGE-MAP.md)。
 
 ---
 

@@ -536,47 +536,47 @@ void mod_autorun(ModuleCtx& ctx) {
             ctx.checked_source("Print Processors");
         }
     }
-    // Startup 文件夹（公共 + 当前用户）
-    char path[MAX_PATH]{};
-    if (SHGetFolderPathA(nullptr, CSIDL_COMMON_STARTUP, nullptr, 0, path) == S_OK) {
+    // Startup 文件夹（公共 + 当前用户）：列清单，脚本/可执行另出 finding（W10 考点）
+    auto scan_startup = [&](int csidl, const char* label) {
+        char path[MAX_PATH]{};
+        if (SHGetFolderPathA(nullptr, csidl, nullptr, 0, path) != S_OK) return;
         WIN32_FIND_DATAA fd;
         std::string pat = std::string(path) + "\\*";
         HANDLE fh = FindFirstFileA(pat.c_str(), &fd);
-        if (fh != INVALID_HANDLE_VALUE) {
-            std::string listing;
-            do {
-                if (fd.cFileName[0] == '.') continue;
-                std::string fp = std::string(path) + "\\" + fd.cFileName;
-                listing += fd.cFileName + std::string(" ");
-            } while (FindNextFileA(fh, &fd));
-            FindClose(fh);
-            Evidence e;
-            e.source_kind = "dir";
-            e.source_path = path;
-            e.payload = listing.empty() ? "(空)" : listing;
-            ctx.add_evidence(e);
-            ctx.checked_source("公共 Startup");
-        }
-    }
-    if (SHGetFolderPathA(nullptr, CSIDL_STARTUP, nullptr, 0, path) == S_OK) {
-        WIN32_FIND_DATAA fd;
-        std::string pat = std::string(path) + "\\*";
-        HANDLE fh = FindFirstFileA(pat.c_str(), &fd);
-        if (fh != INVALID_HANDLE_VALUE) {
-            std::string listing;
-            do {
-                if (fd.cFileName[0] == '.') continue;
-                listing += fd.cFileName + std::string(" ");
-            } while (FindNextFileA(fh, &fd));
-            FindClose(fh);
-            Evidence e;
-            e.source_kind = "dir";
-            e.source_path = path;
-            e.payload = listing.empty() ? "(空)" : listing;
-            ctx.add_evidence(e);
-            ctx.checked_source("当前用户 Startup");
-        }
-    }
+        if (fh == INVALID_HANDLE_VALUE) return;
+        std::string listing;
+        do {
+            if (fd.cFileName[0] == '.') continue;
+            std::string name = fd.cFileName;
+            listing += name + " ";
+            std::string low = to_lower(name);
+            if (low == "desktop.ini" || ends_with(low, ".lnk")) continue;
+            bool sus = ends_with(low, ".vbs") || ends_with(low, ".vbe") ||
+                       ends_with(low, ".bat") || ends_with(low, ".cmd") ||
+                       ends_with(low, ".js") || ends_with(low, ".jse") ||
+                       ends_with(low, ".wsf") || ends_with(low, ".wsh") ||
+                       ends_with(low, ".ps1") || ends_with(low, ".exe") ||
+                       ends_with(low, ".scr") || ends_with(low, ".com");
+            if (!sus) continue;
+            Finding f;
+            f.rule_id = "WIN.AUTORUN.SUSPECT.001";
+            f.severity = "high";
+            f.confidence = "medium";
+            f.rationale = std::string("Startup 启动文件夹含脚本/可执行: ") + path + "\\" + name;
+            f.object_ref = std::string(path) + "\\" + name;
+            f.advice_id = "ADVICE.AUTORUN.REVIEW.001";
+            ctx.add_finding(f);
+        } while (FindNextFileA(fh, &fd));
+        FindClose(fh);
+        Evidence e;
+        e.source_kind = "dir";
+        e.source_path = path;
+        e.payload = listing.empty() ? "(空)" : listing;
+        ctx.add_evidence(e);
+        ctx.checked_source(label);
+    };
+    scan_startup(CSIDL_COMMON_STARTUP, "公共 Startup");
+    scan_startup(CSIDL_STARTUP, "当前用户 Startup");
     ctx.note("未加载用户 hive 不覆盖（PLAN 边界）");
     ctx.set_status(ModuleStatus::PASS);
 }

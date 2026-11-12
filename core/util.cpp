@@ -148,6 +148,7 @@ std::string escape_html(const std::string& s) {
         case '>': out += "&gt;"; break;
         case '"': out += "&quot;"; break;
         case '\'': out += "&#39;"; break;
+        case '\0': out += "\\0"; break;
         default: out += ch;
         }
     }

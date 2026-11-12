@@ -1,10 +1,13 @@
-// ctfir CLI — 只读应急扫描（契约：version/doctor/scan/explain/report；拒绝 fix/apply）
+// ctfir CLI — 只读应急扫描（契约：version/doctor/scan/explain/report/actions；
+// GUI 拒绝 apply；CLI 可选受控 fix，默认不执行）
 #include "core/session.hpp"
 #include "core/report.hpp"
 #include "core/advice.hpp"
 #include "core/remediate.hpp"
 #include "core/fixengine.hpp"
 #include "core/util.hpp"
+#include "core/display_action.hpp"
+#include "core/compat.hpp"
 #include "platform/modules_registry.hpp"
 
 #include <cstdio>
@@ -90,17 +93,35 @@ static int cmd_version() {
     return 0;
 }
 
+static std::string json_escape(const std::string& s) {
+    std::string o;
+    o.reserve(s.size() + 8);
+    for (unsigned char c : s) {
+        if (c == '"' || c == '\\') { o += '\\'; o += static_cast<char>(c); }
+        else if (c == '\n') o += "\\n";
+        else if (c == '\r') o += "\\r";
+        else o += static_cast<char>(c);
+    }
+    return o;
+}
+
 static int cmd_doctor() {
+    HostCompat hc = evaluate_host_compat();
     std::printf("{\"command\":\"doctor\",\n");
     std::printf(" \"tool_version\":\"%s\",\n", kToolVersion);
-    std::printf(" \"os_name\":\"%s\",\n", detect_os_name().c_str());
-    std::printf(" \"os_version\":\"%s\",\n", detect_os_version().c_str());
-    std::printf(" \"os_arch\":\"%s\",\n", detect_os_arch().c_str());
-    std::printf(" \"privilege\":\"%s\",\n", detect_privilege().c_str());
+    std::printf(" \"os_name\":\"%s\",\n", json_escape(detect_os_name()).c_str());
+    std::printf(" \"os_version\":\"%s\",\n", json_escape(detect_os_version()).c_str());
+    std::printf(" \"os_arch\":\"%s\",\n", json_escape(detect_os_arch()).c_str());
+    std::printf(" \"binary_arch\":\"%s\",\n", json_escape(hc.binary_arch).c_str());
+    std::printf(" \"privilege\":\"%s\",\n", json_escape(detect_privilege()).c_str());
+    std::printf(" \"compat\":\"%s\",\n", json_escape(hc.level).c_str());
+    std::printf(" \"compat_note\":\"%s\",\n", json_escape(hc.note).c_str());
     std::printf(" \"schema_version\":%d,\n", kSchemaVersion);
     size_t n = build_platform_modules().size();
     std::printf(" \"modules_registered\":%zu,\n", n);
     std::printf(" \"notes\":\"只读工具；未实现/受限模块在报告中如实列出\"\n}\n");
+    if (hc.level == "warn")
+        std::fprintf(stderr, "[ctfir] 兼容性: %s\n", hc.note.c_str());
     return 0;
 }
 
@@ -118,10 +139,12 @@ static int cmd_help() {
         " 6. Web 痕迹:     WIN.WEB / LNX.WEB（webshell 特征 + POST Top IP）\n"
         " 7. 执行痕迹:     Prefetch/ShimCache/bash_history/wtmp\n"
         " 8. 文件巡检:     --dir 自定目录 + --baseline 基线比对\n"
-        " 9. 处置:         按报告\"处置手册\"六步执行（停用先于删除）\n"
+        " 9. 处置:         ctfir actions --session 目录 --bucket clear\n"
+        "                  复制已填命令人工执行（停用先于删除；决赛持久化须删除）\n"
         "10. 复查:         处置后重扫 + ctfir diff --a 旧 --b 新 确认变化\n"
-        "\n速查手册: ctfir playbook <user|task|service|process|startup|hosts|sshkey|cron|profile|preload|webshell|hash|log>\n"
-        "红线: 本工具只读，一切修改按手册人工执行。\n",
+        "\n个人赛/团队赛主机侧都用 --profile full（quick 不含 Web/中间件，团队赛会漏点）。\n"
+        "速查手册: ctfir playbook <user|task|service|process|startup|hosts|sshkey|cron|profile|preload|webshell|hash|log>\n"
+        "红线: GUI 无修复按钮，不做 SFC/DISM/一键系统修复。CLI 可选 ctfir fix（白名单+备份）。\n",
         kToolVersion);
     return 0;
 }
@@ -253,6 +276,11 @@ static int cmd_scan(const std::string& out_dir,
     cfg.profile = profile;
     Session sess(cfg);
     sess.set_host_info(detect_os_name(), detect_os_version(), detect_os_arch(), detect_privilege());
+    {
+        HostCompat hc = evaluate_host_compat();
+        if (hc.level == "warn")
+            std::fprintf(stderr, "[ctfir] 兼容性: %s\n", hc.note.c_str());
+    }
 
     std::string reason;
     if (!sess.prepare_out_dir(reason)) {
@@ -288,6 +316,9 @@ static int cmd_scan(const std::string& out_dir,
         std::fprintf(stderr, "[ctfir] 输出失败: %s\n", reason.c_str());
         return 3;
     }
+
+    write_checklist(stderr, sess.findings(), 30);
+    std::fprintf(stderr, "完整队列见 %s/report.html\n", out_dir.c_str());
 
     // stdout：纯 JSON 终报
     auto advices = advices_for(sess.findings());
@@ -342,9 +373,7 @@ static int cmd_explain(int argc, char** argv) {
                                 e.payload.substr(0, 4000).c_str());
             }
         }
-        const Advice* a = find_advice(f.advice_id);
-        if (a) std::printf("--- 建议（复制参考，工具不执行）---\n【%s】\n%s\n", a->title, a->text);
-        else std::printf("(未挂接建议：按证据人工复核)\n");
+        std::printf("--- 建议（复制参考，工具不执行）---\n%s\n", instantiate_advice(f).c_str());
     }
     return 0;
 }
@@ -381,6 +410,45 @@ static int cmd_report(int argc, char** argv) {
     return 0;
 }
 
+// 比赛急救箱：把已填命令打到 stdout，不执行。默认立刻清。
+static int cmd_actions(int argc, char** argv) {
+    std::string dir, bucket = "clear";
+    for (int i = 2; i < argc; ++i) {
+        if (!std::strcmp(argv[i], "--session") && i + 1 < argc) dir = argv[++i];
+        else if (!std::strcmp(argv[i], "--bucket") && i + 1 < argc) bucket = argv[++i];
+    }
+    if (dir.empty()) {
+        std::fprintf(stderr,
+            "用法: ctfir actions --session <目录> [--bucket clear|harden|trace|web|all]\n"
+            "打印已填对象的命令（不执行）。比赛路径：scan → actions --bucket clear → 人工粘贴。\n"
+            "默认 bucket=clear（立刻清）。GUI 无修复按钮，本命令也不执行。\n");
+        return 3;
+    }
+    if (bucket == "kit") bucket = "clear";
+    ScanSession s; std::vector<Finding> fds; std::vector<Evidence> evs; std::string err;
+    if (!load_session_dir(dir, s, fds, evs, err)) {
+        std::fprintf(stderr, "[ctfir] %s\n", err.c_str());
+        return 3;
+    }
+    auto idx = sorted_finding_indices(fds);
+    int n = 0;
+    for (auto i : idx) {
+        const Finding& f = fds[i];
+        Triage t = triage_of(f);
+        if (bucket != "all" && std::string(t.bucket_id) != bucket) continue;
+        DisplayAction da = display_action(f);
+        if (da.command.empty()) continue;
+        ++n;
+        std::printf(":: [%s] %s\n:: 对象 %s\n%s\n",
+                    t.bucket_zh, da.title.c_str(), f.object_ref.c_str(), da.command.c_str());
+        if (!da.contest_note.empty())
+            std::printf(":: 决赛 %s\n", da.contest_note.c_str());
+        std::printf("\n");
+    }
+    std::fprintf(stderr, "[ctfir] 已列出 %d 条命令（不执行）。复制粘贴到管理员 cmd。\n", n);
+    return n ? 1 : 0;
+}
+
 int main(int argc, char** argv) {
     if (argc < 2) {
         std::fprintf(stderr,
@@ -389,9 +457,10 @@ int main(int argc, char** argv) {
             "  ctfir version\n"
             "  ctfir doctor\n"
             "  ctfir scan --out <目录>\n"
+            "  ctfir actions --session <目录> [--bucket clear|harden|trace|web|all]\n"
             "  ctfir explain --session <目录> --finding <ID或规则ID>\n"
             "  ctfir report --session <目录> [--redact]\n"
-            "  （只读工具：不存在 apply/fix；修改一律按报告建议人工执行）\n",
+            "  （GUI 无修复按钮；CLI 可选 ctfir fix，默认只读）\n",
             kToolVersion);
         return 3;
     }
@@ -426,6 +495,7 @@ int main(int argc, char** argv) {
     if (cmd == "diff") return cmd_diff(argc, argv);
     if (cmd == "explain") return cmd_explain(argc, argv);
     if (cmd == "report") return cmd_report(argc, argv);
+    if (cmd == "actions" || cmd == "kit") return cmd_actions(argc, argv);
     std::fprintf(stderr, "[ctfir] 未知命令: %s\n", cmd.c_str());
     return 3;
 }

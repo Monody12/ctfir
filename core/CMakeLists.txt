@@ -8,6 +8,9 @@ add_library(ctfir_core STATIC
   advice.cpp
   remediate.cpp
   fixengine.cpp
+  triage.cpp
+  display_action.cpp
+  compat.cpp
 )
 # 平台层编入同一静态库（仅本平台源码）
 if(WIN32)

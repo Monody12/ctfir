@@ -2,6 +2,23 @@
 
 格式：编号 / 背景 / 决策 / 理由与依据 / 影响与回退。
 
+## ADR-010 考试兼容与「急救箱」边界（2026-11-12）
+
+- 背景：用户问 Win7 非 SP1 / 32 位 x86 会否出现在经纬杯决赛，以及能否做成 360 式离线系统急救箱。
+- 决策：
+  1. **不做 RTM (7600) 兼容工程**。主线仍是 7601 SP1。运行时 `doctor`/扫描/GUI 识别 build 小于 7601 则警告，不阻断。
+  2. **不交付 x86 包**（维持 ADR-001）。x64 PE 无法在 32 位 OS 启动；x86 PE 在 x64 赛机上会被 WOW64 重定向并漏 64 位持久化。有 32 位赛题证据再升级。
+  3. **GUI 永不做一键修复 / SFC / DISM / 360 系统修复**。比赛急救路径 = `ctfir actions --session … --bucket clear`（或 GUI 复制命令）+ 可选 CLI `ctfir fix` 白名单。
+  4. **CI 钉 `windows-2022` + VS2022**，不用 `windows-latest`（VS18）。Windows zip 用 Python zipfile（UTF-8），因 `tar -a` 在 Actions 上成功写包却退出码 1。
+- 理由：决赛指南考点是持久化/账户/日志/Web，不是修系统文件。RTM 与 x86 无真机、无赛题证据，扩矩阵会挤占备考时间。
+- 回退：若决赛指南或现场抽到 32 位/RTM，再开 x86 构建 + 真机格。
+
+## ADR-009 CLI 受控 `ctfir fix`（v0.5）
+
+- 背景：默认只读与「比赛要清持久化」之间需要一条受控写路径。
+- 决策：仅 CLI `ctfir fix`；白名单操作、先备份到 `fix-backup/`、写 `fix-journal.jsonl`、`--dry-run`/`--yes`。GUI 无 Apply。
+- 回退：删除 `cmd_fix` 即回到纯只读。
+
 ## ADR-008 nlohmann/json 锁 v3.12.0（2026-11-08）
 
 - 背景：PLAN §5.1 候选 v3.11.3，开工门禁要求安全公告核查后定版；核查发现 3.12.0 修复了 3.11.3 存在的安全相关 CBOR/MessagePack 解析缺陷（OSS-Fuzz）。

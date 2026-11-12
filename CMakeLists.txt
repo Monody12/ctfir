@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 cmake_policy(SET CMP0091 NEW)  # MSVC_RUNTIME_LIBRARY 抽象
-project(ctfir LANGUAGES CXX VERSION 0.6.1)
+project(ctfir LANGUAGES CXX VERSION 0.7.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

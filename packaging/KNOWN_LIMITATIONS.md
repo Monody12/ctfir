@@ -26,3 +26,13 @@
 18. **事件通道不由测试清理**：真实服务创建会产生 System 7045 与（若审核开启）Security 4697。夹具在 finally 中删除临服务并复扫确认服务/文件/注册表干净；**禁止** `wevtutil cl` 清空通道。复扫仍可能看到这些事件，属预期，不是清理失败。
 19. **PowerShell 历史测试隔离**：自动化用例只读 `CTFIR_FIXTURE_PSHIST` 指向的临时夹具，不读、不改用户真实 `ConsoleHost_history.txt`。生产扫描路径不变（各用户 Roaming）。
 20. **平台格替代**：Server 2008 R2 真 OS 与 CentOS 3.10 真内核无法在本开发机用容器启动（见 COMPATIBILITY）。已用合成事件 XML 与 centos:7 用户态夹具做最接近的自动化替代，不把这两格写成 PASSED。
+
+## v0.7.0 补充（2026-11-12）
+
+21. **GUI 仍无写动作**：处置工作台只排序/过滤/展示已填对象的命令，复制到剪贴板。没有修复/执行按钮。
+22. **Linux `ctfir fix` 对 persist 仍是注释行**（`linux_comment_line`）。决赛指南要求彻底删除时，按报告里的 `sed -i Nd` / 删行命令手工做，不要把「fix 成功」当成得分。
+23. **默认隐藏清单/事实项**（账户全量清单、TASK.FACT、RECENT、用户 Temp 可执行、微软预装 Active Setup CLSID）。检测仍写入 findings.json；视图切「全部」或点 KPI「已隐藏清单」可找回。Web / 日志 / 中间件默认可见。
+24. **ADS 清除命令用 `del 文件:流名`**（Win7 无 PowerShell `-Stream`）。Startup 文件夹的 `.vbs/.bat/.js/.exe` 复用 `WIN.AUTORUN.SUSPECT.001`，不是新规则 ID。
+25. **不是 360 / 系统急救箱**：不做 SFC、DISM、注册表垃圾清理、驱动修复、系统文件替换。比赛急救路径是 `ctfir scan` → `ctfir actions --bucket clear`（或 GUI「复制命令」）→ 人工粘贴。GUI 永不自动 apply。
+26. **Win7 RTM (7600) 与 32 位 x86 未交付**：见 COMPATIBILITY。doctor 的 `compat=warn` 只提示，不阻断扫描。
+27. **CI 产物必须用 VS2022（windows-2022）构建**：`windows-latest` 已是 VS18，不再作为 Win7 发布链。

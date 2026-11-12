@@ -1,7 +1,6 @@
-# ctfir 发布 CI：tag 推送（v*）触发双平台构建 → 测试 → 打包 → GitHub Release
-# 工具链与本地完全同源：
-#   Linux  = 仓库自带 docker/builder.Dockerfile（alpine:3.20 + g++/musl-dev 静态编译）
-#   Windows = windows-latest MSVC（/MT 静态 CRT + WINVER=0x0601 已在 CMakeLists 定义）
+# tag 推送（v*）触发双平台构建 → 测试 → 打包 → GitHub Release
+# 日常 push 走 ci.yml 上传 Artifact，不必打 tag 也能下载 exe
+# Windows 钉 windows-2022 + VS2022（windows-latest 已是 VS18，不再保证 Win7 导入面）
 name: release
 
 on:
@@ -18,6 +17,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Version stamp
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            ver="${GITHUB_REF_NAME#v}"
+          else
+            ver=$(sed -n 's/.*kToolVersion = "\([^"]*\)".*/\1/p' core/model.hpp | head -1)
+            ver="${ver}-${GITHUB_SHA:0:7}"
+          fi
+          echo "ver=$ver" >> "$GITHUB_OUTPUT"
+          echo "version=$ver"
+
       - name: Build & test（Alpine builder 容器，与本地 build-linux.sh 同镜像）
         run: |
           docker build -f docker/builder.Dockerfile -t ctfir-builder:ci .
@@ -32,12 +44,12 @@ jobs:
             (ldd /out/ctfir 2>&1 || true) | head -1'
 
       - name: Stage package
-        run: bash scripts/package-ci.sh --platform linux-x86_64 --ver "${GITHUB_REF_NAME#v}" --out staging --bin out-linux/ctfir
+        run: bash scripts/package-ci.sh --platform linux-x86_64 --ver "${{ steps.meta.outputs.ver }}" --out staging --bin out-linux/ctfir
 
       - name: Zip
         run: |
-          (cd staging && zip -qr "../ctfir-v${GITHUB_REF_NAME#v}-linux-x86_64.zip" .)
-          sha256sum "ctfir-v${GITHUB_REF_NAME#v}-linux-x86_64.zip"
+          (cd staging && zip -qr "../ctfir-v${{ steps.meta.outputs.ver }}-linux-x86_64.zip" .)
+          sha256sum "ctfir-v${{ steps.meta.outputs.ver }}-linux-x86_64.zip"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -46,11 +58,34 @@ jobs:
           if-no-files-found: error
 
   windows:
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
       - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+          vsversion: "2022"
+
+      - name: Toolchain stamp
+        shell: bash
+        run: |
+          echo "VisualStudioVersion=${VisualStudioVersion:-unset}"
+          echo "VCToolsVersion=${VCToolsVersion:-unset}"
+          where cl
+
+      - name: Version stamp
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            ver="${GITHUB_REF_NAME#v}"
+          else
+            ver=$(sed -n 's/.*kToolVersion = "\([^"]*\)".*/\1/p' core/model.hpp | head -1)
+            ver="${ver}-${GITHUB_SHA:0:7}"
+          fi
+          echo "ver=$ver" >> "$GITHUB_OUTPUT"
+          echo "version=$ver"
 
       - name: Build（Ninja + msvc-dev-cmd；/MT 与 WINVER 由 CMakeLists 定义）
         shell: bash
@@ -69,17 +104,11 @@ jobs:
 
       - name: Stage package
         shell: bash
-        run: bash scripts/package-ci.sh --platform windows-x64 --ver "${GITHUB_REF_NAME#v}" --out staging --bin build/ctfir.exe build/ctfir-gui.exe
+        run: bash scripts/package-ci.sh --platform windows-x64 --ver "${{ steps.meta.outputs.ver }}" --out staging --bin build/ctfir.exe build/ctfir-gui.exe
 
-      - name: Zip（bsdtar 保留 UTF-8 文件名；Compress-Archive 会把中文名转 ANSI 乱码）
-        shell: pwsh
-        env:
-          REF: ${{ github.ref_name }}
-        run: |
-          $zip = "ctfir-v" + ($env:REF -replace '^v','') + "-windows-x64.zip"
-          if (Test-Path $zip) { Remove-Item $zip }
-          & "$env:SystemRoot\System32\tar.exe" -a -cf $zip -C staging .
-          Get-Item $zip | Select-Object Name, Length
+      - name: Zip（Python zipfile UTF-8；不用 tar -a / Compress-Archive）
+        shell: bash
+        run: python scripts/zip-utf8.py --root staging --out "ctfir-v${{ steps.meta.outputs.ver }}-windows-x64.zip"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -112,5 +141,6 @@ jobs:
 
             - **Windows**：解压即用 `ctfir.exe`（CLI）/ `ctfir-gui.exe`（GUI）——静态 /MT 编译，零运行时依赖，无管理员权限也可跑（受限模块如实标 PERMISSION_DENIED）
             - **Linux**：解压后 `chmod +x ctfir`——musl 静态二进制
-            - **15 分钟应急流程**：`ctfir doctor`（体检）→ `ctfir scan --out out`（只读全扫）→ `ctfir playbook`（离线六步处置手册）→ `ctfir fix --session out --all --yes`（受控一键修复，自动备份+日志）→ `ctfir diff`（修复复核）
+            - **15 分钟应急流程**：`ctfir doctor` → `ctfir scan --out out` → `ctfir actions --session out --bucket clear`（复制命令，不执行）→ 人工粘贴 → `ctfir diff`
+            - GUI **没有**修复按钮，也不做 360/SFC/DISM 一键系统修复
             - 完整说明见包内 `README-先读我.md` / `KNOWN_LIMITATIONS.md`；校验见 `SHA256SUMS.txt`

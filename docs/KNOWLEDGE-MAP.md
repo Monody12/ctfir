@@ -11,7 +11,7 @@
 | 计划任务后门 | WIN.TASK.SUSPECT/REFPATH/FACT | task | 动作参数里的路径比主路径更重要；禁用任务也看内容 |
 | cron 后门 | LNX.PERSIST.CRON.001 / LNX.AT | cron | 被引用脚本全文必读；互拉守护要一起清 |
 | systemd 持久化 | LNX.PERSIST.SYSTEMD/TIMERFACT | cron | ExecStart 与 timer 调度都看 |
-| 启动项/注册表 | WIN.AUTORUN.*（Run/Winlogon/IFEO/AppInit/LSA/登录脚本/BootExecute） | startup | 主路径+参数路径都提取 |
+| 启动项/注册表 | WIN.AUTORUN.*（Run/Winlogon/IFEO/AppInit/LSA/登录脚本/BootExecute/**Startup 文件夹脚本**） | startup | 主路径+参数路径都提取；`.vbs/.bat` 在 Startup 也会报 |
 | 粘滞键后门 | WIN.HASHES（sethc/utilman…） | hash | 与可信同版本比对；IFEO 分支另查 |
 | SSH 后门 | LNX.SSH.*（AUTHKEY/PRIVKEY/CONFIG） | sshkey | 指纹逐条核对；forced command 高危 |
 | preload/库劫持 | LNX.PERSIST.PRELOAD / LNX.LDSO.INJECT | preload | 配置行+库哈希；不加载不删除先取证 |

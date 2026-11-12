@@ -1,11 +1,11 @@
 # STATUS
 
-- 阶段：**v0.6.1 完成**——原 manual / NOT_TESTED / 依赖开发机真实数据的测试点全部改为自建环境的可重复自动化用例（一条命令 `scripts/test-all.ps1`）；工具 0.6 检测能力上的测试完善与若干解析/路径补齐。本地提交，**先不 push、不开 Release**，待确认。
-- 版本：kToolVersion **0.6.1** / 规则包 **6.0.1** / 检测点 **142**（无新规则 ID；Windows 补齐已有 MID.MYSQL.*；EventID Qualifiers 与 BootExecute MULTI_SZ 为修复）
-- 门禁：见 TEST_RESULTS **#40**（全平台构建 + 全套自动化测试数字）
-- 考点对照：应急响应 / 基线核查 / 系统加固 / 日志审计 / 威胁溯源（主机侧）已覆盖；**业务数据恢复、动态流量、内存取证、内核 rootkit、ROW 格式 binlog 还原**属未实现范围（非“未写测试”），KNOWN_LIMITATIONS 已写清
-- 发布产物：`D:\ctfir-build\release\ctfir-v0.6.1-{windows-x64,linux-x86_64}.zip`（hash 见 TEST_RESULTS #40）——二进制已变，需重出包
-- 最后更新：2026-11-12（北京时间）
+- 阶段：**v0.7.0 收口**——处置工作台 + CI 修复 + 宿主兼容警告 + `ctfir actions` 急救清单 + Linux musl 回归。GUI 仍只读，无修复按钮，不做 360/SFC。
+- 版本：kToolVersion **0.7.0** / 规则包 **6.0.1** / 检测点仍 **142**
+- 门禁：TEST_RESULTS **#41**（工作台）+ **#42**（CI / 兼容 / Linux）
+- 考点对照：个人赛安全防护 + 团队赛主机侧（`--profile full`）。Win7 RTM / x86 未交付，见 ADR-010。
+- 发布产物：Windows `D:\ctfir-build\cmake-build\`；Linux `D:\ctfir-build\linux\`。push `main` 走 `.github/workflows/ci.yml` 上传 Artifact；tag `v*` 发 Release。
+- 最后更新：2026-11-12 23:40（北京时间）
 
 ## 已完成
 
@@ -19,6 +19,8 @@
 | v0.5 | 受控 fix 引擎 + R10–R15 考点/修复闭环 | #24–#38 |
 | v0.6 | R16 五点 + 日志取证补漏 + 版本升至 0.6 | #39 |
 | v0.6.1 | 原 manual 全自动化；Win MySQL 路径；2008R2 XML / CentOS7 用户态替代；一条命令全绿 | #40 |
+| v0.7.0 | 处置工作台：分桶/排序/过滤/已填命令/现代 HTML+Win32 GUI；Startup 脚本可见；微软 Active Setup 进清单 | #41 |
+| v0.7.0+#42 | CI（windows-2022 + zip-utf8 + push Artifact）；doctor 兼容警告；`ctfir actions`；Linux 0.7.0 五发行版 42/42 | #42 |
 
 ## 构建入口（固化）
 
@@ -30,9 +32,9 @@
 ## 阻塞 / 风险
 
 - 360 已卸载未重启：驱动残留仅影响已绕行两点；重启后补回归 #8/#9（WP9）。
-- 本轮 **未 git push、未创建 GitHub Release**——待用户确认后再做。
+- GitHub Actions 曾因 `windows-latest`=VS18 以及 `tar -a` 退出码 1 失败（run 43238548478）。已改 `windows-2022` + Python zip，并加 `ci.yml` 使 push 即可下载 Artifact。
 - **真实 CentOS 3.10 内核**与 **Server 2008 R2 操作系统**无法在本开发机用容器启动（技术原因见 #40 / COMPATIBILITY）；已用用户态镜像 + 合成事件 XML 做最接近的自动化替代，**不把这两格标 PASSED**。
 
 ## 失败记录
 
-（本轮见 TEST_RESULTS #40；过程缺陷当场修复后全绿才打包。）
+（v0.6.1 见 #40；v0.7.0 见 #41。过程缺陷当场修复后才记 PASSED。）

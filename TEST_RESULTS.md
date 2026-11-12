@@ -497,3 +497,121 @@ elease\）**：
 Linux `ldd` = Not a valid dynamic program（纯静态 musl，预期）。
 
 **未 git push、未创建 GitHub Release**——待确认后再做。
+
+## 2026-11-12 v0.7.0（#41：处置工作台 + 个人/团队考点覆盖）
+
+**版本**：kToolVersion **0.7.0** / 规则包仍 **6.0.1** / 检测点仍 **142**（无新规则 ID）。「修复全部问题」= UX/产品缺陷（混乱布局、无排序、命令含占位符、界面不现代、个人/团队视图），**不是** GUI 自动 apply。GUI 无修复/执行按钮。
+
+**本轮改动（展示层为主）**
+
+- `core/triage.cpp`：立刻清 / 再加固 / 溯源 / Web / 清单；微软预装 Active Setup CLSID 默认进清单
+- `core/display_action.cpp`：已填对象的一条命令（含 AutoAdminLogon、`net share "ctfir-marker" /delete`、`netsh interface portproxy delete`、Win7 `del 文件:流名`、Startup `del /f`）
+- HTML：海军渐变顶栏、可点 KPI、类别/视图/风险/搜索、行内复制、无外部 URL；证据 NUL 转义为 `\0`
+- Win32 GUI：ComCtl v6、列头排序、过滤、风险色条、复制命令/手册；`recursive_mutex` 避免 ListView 自绘死锁
+- `mod_w.cpp`：Startup 文件夹 `.vbs/.bat/.js/.exe` 复用 `WIN.AUTORUN.SUSPECT.001`（W10 落地文件）
+- CLI stderr 输出最多 30 条处置清单；`--profile full` 为个人赛/团队赛主机侧默认
+
+### 自动化
+
+- `D:\ctfir-build\cmake-build\ctfir_tests.exe`：**66/66 PASS**（含 triage_jw2026_buckets、display_action_filled_commands、triage_ms_activesetup_inventory、html_checklist_and_xss：无 `http://`/`https://`、无 NUL、XSS 转义）
+- `ctfir-gui.exe --selftest --out …`：`ctfir-gui-selftest OK window_created=1 modules=29` exit=0
+- `ctfir.exe version`：`{"tool":"ctfir","version":"0.7.0","read_only":true}`
+- dumpbin：ctfir.exe = KERNEL32+SHELL32+ole32+OLEAUT32+ADVAPI32+NETAPI32+IPHLPAPI+WS2_32+wevtapi（零 CRT）；ctfir-gui.exe 另加 USER32+GDI32+COMCTL32
+
+### Win7 SP1 x64 JW2026-WIN7-01（192.168.0.14，夹具待练题勿清）
+
+命令：`C:\ctfir-test\ctfir.exe scan --out C:\ctfir-test\out-jw2026-v07b --profile full`  
+实际：overall COMPLETE；EXIT=1（有发现，预期）；模块=29；**立刻清 25 / 再加固 13 / 溯源 17 / Web 0 / 隐藏清单 18 / 合计 73**
+
+默认队列（个人防护）已填命令抽检：
+
+| 考点 | 对象 | 一条命令（摘录） |
+|---|---|---|
+| W2 Guest 提权 | Administrators\\Guest | `net localgroup Administrators Guest /delete` |
+| W10 ADS | Desktop\\…note.txt:hidden.exe | `del "…note.txt:hidden.exe"`（非 PowerShell -Stream） |
+| W6 IFEO | IFEO\\ctfir-marker-ifeo.exe | `reg delete …Debugger /f` |
+| W7 登录脚本 | UserInitMprLogonScript | `reg delete … /v UserInitMprLogonScript /f` |
+| W10 Startup | Startup\\ctfir-marker.vbs | `del /f "…Startup\ctfir-marker.vbs"`（本轮新可见） |
+| W3 Run | Run\\ctfir-marker | `reg delete … /v "ctfir-marker" /f` |
+| W9 portproxy | 0.0.0.0/13389 | `netsh interface portproxy delete v4tov4 listenport=13389 listenaddress=0.0.0.0` |
+| W1 $ 账户 | NetUserEnum:ctfir-marker$ | `net user "ctfir-marker$" /delete` |
+| W5 服务 | ctfir-marker-WinUpdate | `sc delete "ctfir-marker-WinUpdate"` |
+| W4 任务 | Task\\ctfir-marker-sync | `schtasks /delete /tn "\ctfir-marker-sync" /f` |
+| W8 hosts | hosts:25 | 删该行 + `ipconfig /flushdns` |
+| W11 共享 | Shares → ctfir-marker | `net share "ctfir-marker" /delete` |
+| W12 UAC | EnableLUA | `reg add … EnableLUA /d 1` |
+| W13 空口令网络 | LimitBlankPasswordUse | `reg add … /d 1` |
+
+HTML `report.html`：含「处置清单」「团队综合」`copyAttr`/`setCat`；`http://`/`https://`/NUL = 无；无「修复」按钮（手册正文「修复入口」字样保留）。微软 5 条 Active Setup 默认 `display:none` 清单。Web=0 因本套未植 webshell，属预期。
+
+### 二进制（2026-11-12 23:15 北京，未出 ZIP）
+
+| 文件 | SHA256 | 大小 |
+|---|---|---|
+| cmake-build/ctfir.exe | 61DADAD612BA55C2CDEC8B167F5925CDAFCB0CB0E5028C1BCBE959D02345879B | 1416192 |
+| cmake-build/ctfir-gui.exe | 65FB4C33E9073676D39A08F9E8D0B648C9E019763D25D0E7A4399084CA82110C | 1403904 |
+| cmake-build/ctfir_tests.exe | BE63F44A9B5880A9BFFEF5C2CAAAC48EEACCE6041102893FB2346E8BD5D77DA5 | 1098240 |
+
+Linux musl 本轮未重编。未 git push、未创建 GitHub Release——待确认后再做。JW2026-WIN7-01 夹具待练题，勿清。
+
+---
+
+## 2026-11-12 v0.7.0（#42：CI 修复 + 兼容提示 + Linux 回归 + `ctfir actions`）
+
+**范围**：用户问 Win7 非 SP1 / x86 考试概率、360 式急救箱、大改后 Linux 是否还能跑、GitHub Actions 报错。决策见 ADR-010。本条只记实证。
+
+### GitHub Actions 失败根因（run 43238548478，tag v0.6.1）
+
+- linux job 成功；windows job 在「Zip（bsdtar）」步失败。
+- `tar.exe -a -cf` **已经写出** `ctfir-v0.6.1-windows-x64.zip`（952320 字节），但退出码 1，pwsh 把 step 标红，artifact 未上传，release job 跳过。
+- 次要：`runs-on: windows-latest` 已是 VS 18 / MSVC 14.51，不再保证 Win7 导入面。
+- 触发面：原 workflow 只跑 `push tags v*` 与 `workflow_dispatch`，普通 push **不会**出包。
+
+**修复**：
+
+- 新增 `.github/workflows/ci.yml`：`push main` / PR / `workflow_dispatch` → 双平台构建+单测+打包+Artifact（保留 14 天）
+- `release.yml`：钉 `windows-2022` + `ilammy/msvc-dev-cmd` `vsversion: 2022`；zip 改 `scripts/zip-utf8.py`（UTF-8 标志位；本地冒烟中文名 `README-先读我.md` flag 0x800）
+- 日常下载走 Actions Artifact；打 `v*` tag 才发 GitHub Release
+
+### 兼容性（不做 RTM/x86 工程）
+
+- 单测 `test_compat.cpp`：Win7 SP1 ok、RTM 7600 warn、Win11 ok、2008 R2 SP1 ok、x64 包 vs x86 OS warn、x86 包 vs x64 OS WOW64 warn、CentOS7 内核串不当成 Win build。
+- Win7 SP1 真机 doctor：`compat=ok`，`os_name=Windows 7 Ultimate`，`os_version=6.1.7601 Service Pack 1`，`os_arch=x64`，`binary_arch=x64`，`modules_registered=29`
+- 开发机 doctor：`compat=ok`（build 26100）
+
+### `ctfir actions`（比赛急救箱，不执行）
+
+Win7 `C:\ctfir-test\out-jw2026-v07b --bucket clear`：**已列出 25 条命令**（与 #41 KPI 立刻清 25 一致）。抽检命令仍是 ASCII 可粘贴：`net localgroup Administrators Guest /delete`、`del "…note.txt:hidden.exe"`、`reg delete …IFEO…`、`del /f "…Startup\ctfir-marker.vbs"`、`netsh interface portproxy delete …13389`、`net share "ctfir-marker" /delete`。SSH 捕获中文标题乱码属 Win7 控制台 GBK，命令本身可用。GUI 无修复按钮。
+
+### Linux 0.7.0 musl 回归
+
+`scripts/test-linux.sh` + 额外用户态：
+
+| 环境 | 结果 |
+|---|---|
+| Alpine 3.20 单测 | **71/71**（无 Win32 `extract_paths` 4 条） |
+| Alpine fixture_linux.sh | **42/42** |
+| Alpine hidepid L39 | PASS（nobody+hidepid exit=2，PERMISSION_DENIED） |
+| centos:7 fixture | **42/42** |
+| centos7-full:latest fixture | **42/42** |
+| debian:8 fixture | **42/42** |
+| ubuntu:16.04 fixture | **42/42** |
+| alpine / centos:7 `ctfir doctor` | version 0.7.0，`binary_arch=x86_64`，`compat=ok`，modules=47 |
+
+ld.so.preload 夹具引起的 `cannot be preloaded` 是正例副作用，夹具 PASS。内核仍是 WSL2 6.6，**不把 3.10 真机格标 PASSED**。
+
+### Windows 构建（本机 VS2022 v143）
+
+`ctfir_tests.exe`：**75/75 PASS**。GUI `--selftest` exit=0。dumpbin `ctfir.exe` 依赖：KERNEL32 SHELL32 ole32 OLEAUT32 ADVAPI32 NETAPI32 IPHLPAPI WS2_32 wevtapi（零 CRT DLL）。
+
+### 二进制（2026-11-12 23:26 北京）
+
+| 文件 | SHA256 | 大小 |
+|---|---|---|
+| cmake-build/ctfir.exe | FC7F8B241C596D11D1A2784A4B89DEFA277207BB22FAE207CA9636B69A8C4140 | 1424384 |
+| cmake-build/ctfir-gui.exe | 5D0990B57794E084D81009C4EFE92A67551C38C46A8B199ECFE1FD21CD145895 | 1408000 |
+| cmake-build/ctfir_tests.exe | DA9820ADA6E8BED567EBAF862C6C18919C96C7328D2FD9B5165FA5D05941525C | — |
+| linux/ctfir | E3E038D00EAC7539F12676B71053D5C7DFD7A5B10DE6D52EDDD9969333DEE662 | 3885256 |
+| linux/ctfir_tests | 7059A3C004309837F1A870CC4F02824E68E01BFE4D72963B64FF3FD7C0E0D1F2 | 3191568 |
+
+Win7 已部署 `C:\ctfir-test\ctfir.exe` / `ctfir-gui.exe` 本轮产物。JW2026-WIN7-01 夹具待练题，勿清。
