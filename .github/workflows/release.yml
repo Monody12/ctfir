@@ -71,11 +71,15 @@ jobs:
         shell: bash
         run: bash scripts/package-ci.sh --platform windows-x64 --ver "${GITHUB_REF_NAME#v}" --out staging --bin build/ctfir.exe build/ctfir-gui.exe
 
-      - name: Zip
+      - name: Zip（bsdtar 保留 UTF-8 文件名；Compress-Archive 会把中文名转 ANSI 乱码）
         shell: pwsh
         env:
           REF: ${{ github.ref_name }}
-        run: Compress-Archive -Path staging/* -DestinationPath ("ctfir-v" + ($env:REF -replace '^v','') + "-windows-x64.zip") -Force
+        run: |
+          $zip = "ctfir-v" + ($env:REF -replace '^v','') + "-windows-x64.zip"
+          if (Test-Path $zip) { Remove-Item $zip }
+          & "$env:SystemRoot\System32\tar.exe" -a -cf $zip -C staging .
+          Get-Item $zip | Select-Object Name, Length
 
       - uses: actions/upload-artifact@v4
         with:
