@@ -10,11 +10,20 @@
 2. **离线**——代码中零网络 API；报告零外部资源，可断网打开。
 3. **如实**——PASS 只代表"声明范围内未命中"；权限不足 / 超时 / 未覆盖项全部如实列出，不充当安全结论。
 
-- **当前版本**：v0.8.0（规则包 7.0.0，2026-11-13）｜ 许可证 [MIT](LICENSE)
+- **当前版本**：v0.8.4（规则包 7.2.2，2026-11-14）｜ 许可证 [MIT](LICENSE)
 - **支持平台**：Windows 7 SP1+ x64 / Windows 10/11 x64（GUI + CLI）；Linux x86_64 静态二进制（CLI，CentOS 7 用户态已验）
 - **完整兼容矩阵**：[packaging/COMPATIBILITY.md](packaging/COMPATIBILITY.md) ｜ 已知限制：[packaging/KNOWN_LIMITATIONS.md](packaging/KNOWN_LIMITATIONS.md)
 
 ---
+
+## v0.8.4 发布验证
+
+- 当前检测点 **191**，规则包 **7.2.2**；0.8.4 源码从原 Windows 工作区完整迁移到 box，原机/练习环境不变。
+- 构建：`bash scripts/build-linux.sh`（Linux 主机默认 `out/linux`，Windows 保留 D:/ 路径）；Windows 由 GitHub Actions VS2022 `/MT` 构建。
+- `scripts/release-checks.sh <platform> <binary>` 是 CI 打包前强制门禁：Linux 四发行版夹具+hidepid+高频 59 项；Windows 基础夹具+16 项独立高频夹具（不依赖 JW2026）。
+- 高频夹具仅在可销毁容器 / GitHub-hosted Windows runner 内运行，退出清理；不触碰用户练习环境。Windows PS 历史为独立临时文件。
+- 包内 `BUILDINFO.json` 记录工具/规则包版本、源码 commit/tree、规则源码摘要及二进制 SHA256。先核对根 `SHA256SUMS.txt`。
+- 真实 Server 2008 R2、CentOS 3.10 内核仍未实测；合成/用户态替代不等于真 OS/内核通过。详见 TEST_RESULTS #44。
 
 ## 一、给使用者
 
@@ -91,7 +100,7 @@ ctfir.exe (CLI)  /  ctfir-gui.exe (Win32)
 | `core/` | 引擎：调度、数据契约（schema v1）、SHA-256、报告、建议库 |
 | `platform/win/` | `mod_w/w2/w3.cpp` 三个模块族 + 公共助手（注册表双视图、路径提取器） |
 | `platform/linux/` | `mod_a/b/c/d.cpp` 四个模块族 + 公共助手 |
-| `docs/` | [DETECTION-POINTS.md](docs/DETECTION-POINTS.md)（189 检测点台账）、[AD-SERVER-POINTS.md](docs/AD-SERVER-POINTS.md)、[KNOWLEDGE-MAP.md](docs/KNOWLEDGE-MAP.md) |
+| `docs/` | [DETECTION-POINTS.md](docs/DETECTION-POINTS.md)（191 检测点台账）、[AD-SERVER-POINTS.md](docs/AD-SERVER-POINTS.md)、[KNOWLEDGE-MAP.md](docs/KNOWLEDGE-MAP.md) |
 | `tests/` | 单测 + [cases/](tests/cases/) 声明式用例库 + 三套夹具生成器 |
 | `scripts/` | 构建 / 测试 / 打包脚本 |
 | `packaging/` | 发布包文档（README-先读我 / COMPATIBILITY / KNOWN_LIMITATIONS） |

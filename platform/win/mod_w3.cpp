@@ -397,7 +397,7 @@ void mod_drivers(ModuleCtx& ctx) {
         f.advice_id = "ADVICE.SVC.REVIEW.001";
         ctx.add_finding(f);
     }
-    ctx.note("本模块只读枚举；rootkit 级隐藏不在覆盖范围（W11/内核专题 DEFERRED）");
+    ctx.note("rootkit 级隐藏不在覆盖范围");
     ctx.set_status(ModuleStatus::PASS);
 }
 

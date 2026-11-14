@@ -1,5 +1,6 @@
 // Linux B 级模块：L07 systemd/init / L08 关键 ELF / L09 进程 / L10 SUID / L11 日志
 #include "lnx_common.hpp"
+#include "core/lnx_heuristics.hpp"
 
 #include <cstring>
 #include <dirent.h>
@@ -45,7 +46,7 @@ void mod_systemd(ModuleCtx& ctx) {
                     f.confidence = "medium";
                     f.rationale = "systemd 单元 Exec 行含可疑特征: " + whys + "——自建服务属正常场景，需核对";
                     f.evidence_paths = {p};
-                    f.object_ref = p + ":" + std::to_string(no);
+                    f.object_ref = p;
                     f.limitations = {"未读取运行态 enabled 状态；drop-in 覆盖关系仅按文件逐个检查"};
                     f.advice_id = "ADVICE.CRON.REVIEW.001";
                     ctx.add_finding(f);
@@ -68,8 +69,26 @@ void mod_systemd(ModuleCtx& ctx) {
         ctx.note("systemd 单元目录不存在（非 systemd 系统）：init.d/rc.local 兜底检查");
     }
     // init.d / rc.local 兜底
-    for (const auto& f : list_dir("/etc/init.d", 200))
-        read_source(ctx, f, false);
+    for (const auto& f : list_dir("/etc/init.d", 200)) {
+        ReadResult ir = read_source(ctx, f, false);
+        if (!ir.ok) continue;
+        std::string base = f.substr(f.find_last_of('/') + 1);
+        if (base == "functions" || base == "network" || base == "netconsole") continue;
+        for_each_line(ir.content, [&](int no, const std::string& line) {
+            std::string t = trim(line);
+            if (!initd_line_is_backdoor(t)) return;
+            Finding fd;
+            fd.rule_id = "LNX.PERSIST.INITD.001";
+            fd.severity = "high";
+            fd.confidence = "medium";
+            fd.rationale = "SysV init.d 脚本含下载/反弹特征（" + base + " 第 " +
+                           std::to_string(no) + " 行）";
+            fd.evidence_paths = {f};
+            fd.object_ref = f + ":" + std::to_string(no);
+            fd.advice_id = "ADVICE.CRON.REVIEW.001";
+            ctx.add_finding(fd);
+        });
+    }
     ReadResult rc = read_source(ctx, "/etc/rc.local", false);
     if (rc.ok) {
         for_each_line(rc.content, [&](int no, const std::string& line) {
@@ -162,7 +181,7 @@ void mod_proc(ModuleCtx& ctx) {
                 f.confidence = "medium";
                 f.rationale = "进程命令行含矿池/矿机特征: " + cmdline.substr(0, 300);
                 f.evidence_paths = {pid_dir + "/cmdline"};
-                f.object_ref = pid_dir;
+                f.object_ref = "PID " + base;
                 f.limitations = {"PID 可能复用；以证据快照为准"};
                 f.advice_id = "ADVICE.MINER.REVIEW.001";
                 ctx.add_finding(f);
@@ -182,7 +201,7 @@ void mod_proc(ModuleCtx& ctx) {
             f.rationale = "进程运行已删除的可执行文件: " + exe +
                           "（软件升级期属正常；配合时间与路径判断）";
             f.evidence_paths = {pid_dir + "/exe"};
-            f.object_ref = pid_dir;
+            f.object_ref = "PID " + base;
             f.advice_id = "ADVICE.MINER.REVIEW.001";
             ctx.add_finding(f);
         }
@@ -237,7 +256,7 @@ void mod_suid(ModuleCtx& ctx) {
                               "（发行版合法工具可能不在清单内，需人工核实）";
                 f.evidence_paths = {p};
                 f.limitations = {"白名单为常见发行版集合；自定义合法工具会命中"};
-                f.advice_id = "ADVICE.ACC.REVIEW.001";
+                f.advice_id = "ADVICE.HASH.BASELINE.001";
                 ctx.add_finding(f);
             }
         }

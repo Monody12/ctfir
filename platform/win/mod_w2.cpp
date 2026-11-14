@@ -373,6 +373,7 @@ void mod_evtlog(ModuleCtx& ctx) {
             std::vector<EVT_HANDLE> sev(50);
             DWORD sret = 0;
             int sread = 0;
+            std::set<std::string> seen_7045;
             while (sread < 200 && EvtNext(sq, 50, sev.data(), 2000, 0, &sret) && sret > 0) {
                 for (DWORD i = 0; i < sret; ++i) {
                     DWORD sn = 0, sp = 0;
@@ -396,7 +397,7 @@ void mod_evtlog(ModuleCtx& ctx) {
                                 slow.find("psexesvc") != std::string::npos ||
                                 slow.find("%temp%") != std::string::npos ||
                                 slow.find("appdata") != std::string::npos);
-                    if (sus) {
+                    if (sus && seen_7045.insert(sname.empty() ? spath : sname).second) {
                         Finding f;
                         f.rule_id = "WIN.EVT.SVC7045.001";
                         f.severity = "high";
@@ -436,6 +437,7 @@ void mod_evtlog(ModuleCtx& ctx) {
     std::map<std::string, int> fail_ip;
     int fail_total = 0, ok_total = 0, read = 0;
     std::vector<std::string> created;      // 4720 新建账户（逐条 medium）
+    std::set<std::string> seen_4720;
     std::vector<std::string> mgmt_timeline;
     bool log_cleared = false; // 4722/4724/4725/4726/4732 聚合
     std::vector<EVT_HANDLE> events(100);
@@ -467,7 +469,8 @@ void mod_evtlog(ModuleCtx& ctx) {
             } else if (eid == 4624) {
                 ++ok_total;
             } else if (eid == 4720) {
-                created.push_back(tb + " 创建账户 " + target);
+                if (target.empty() || seen_4720.insert(target).second)
+                    created.push_back(tb + " 创建账户 " + (target.empty() ? "?" : target));
             } else if (eid == 4722) {
                 mgmt_timeline.push_back(tb + " 启用账户 " + target);
             } else if (eid == 4724) {
@@ -541,9 +544,12 @@ void mod_evtlog(ModuleCtx& ctx) {
         f.severity = "medium";
         f.confidence = "high";
         f.rationale = "安全日志记录到新建本地账户: " + c + "（北京时间）——结合授权运维记录核实";
-        f.object_ref = "Security 4720";
+        std::string who;
+        size_t wp = c.rfind(' ');
+        if (wp != std::string::npos) who = c.substr(wp + 1);
+        f.object_ref = who.empty() || who == "?" ? "Security 4720" : "Security 4720:" + who;
         f.limitations = {"日志可能被清除（1102 事件）；时间取自事件本地记录"};
-        f.advice_id = "ADVICE.ACC.REVIEW.001";
+        f.advice_id = "ADVICE.EVENTLOG.REVIEW.001";
         ctx.add_finding(f);
     }
     if (!mgmt_timeline.empty()) {
@@ -751,7 +757,7 @@ void mod_web(ModuleCtx& ctx) {
                             f.rationale = "疑似攻击工具遗留文件: " + d + "\\" + fd.cFileName +
                                           "（内网扫描/隧道/凭据工具，需人工核实）";
                             f.object_ref = d + "\\" + fd.cFileName;
-                            f.advice_id = "ADVICE.MINER.REVIEW.001";
+                            f.advice_id = "ADVICE.TOOLS.REVIEW.001";
                             ctx.add_finding(f);
                         }
                         break;
@@ -779,7 +785,7 @@ void mod_web(ModuleCtx& ctx) {
                     f.rationale = "frp 隧道配置文件: " + fp + "（[common]/server_addr——内网穿透回连痕迹）";
                     f.object_ref = fp;
                     f.evidence_paths = {fp};
-                    f.advice_id = "ADVICE.MINER.REVIEW.001";
+                    f.advice_id = "ADVICE.TOOLS.REVIEW.001";
                     ctx.add_finding(f);
                 }
             } while (FindNextFileA(fh, &fd));
@@ -803,7 +809,7 @@ void mod_web(ModuleCtx& ctx) {
         }
         std::string ev_id = ctx.add_evidence(le);
         ctx.checked_source(lp);
-        if (s.posts >= 50) {
+        if (s.posts >= 20) {
             Finding f;
             f.rule_id = "WIN.WEB.LOGPOST.001";
             f.severity = "low";
@@ -1055,7 +1061,7 @@ void mod_proccmd(ModuleCtx& ctx) {
                 (assoc.empty() ? "" : "--- 端口关联 ---\n" + assoc);
     ctx.add_evidence(e);
     ctx.checked_source("WMI Win32_Process");
-    ctx.note("cmdline 经 WMI 只读采集；服务进程命令行可能为空");
+    ctx.note("cmdline 经 WMI 采集；服务进程命令行可能为空");
     ctx.set_status(ModuleStatus::PASS);
 }
 
@@ -1135,6 +1141,7 @@ void mod_files(ModuleCtx& ctx) {
                 if (++files > 800) break;
                 std::string low = to_lower(fp);
                 std::string namelow = to_lower(fd.cFileName);
+                bool did_double = false;
                 // 双扩展名（invoice.pdf.exe 类；排除合法归档与版本号 .3-1 等伪扩展）
                 if (namelow.find('.', 1) != std::string::npos) {
                     size_t last = namelow.rfind('.');
@@ -1157,21 +1164,24 @@ void mod_files(ModuleCtx& ctx) {
                         }
                         if (!has_alpha) prev_real_ext = false;
                     }
-                    if (looks_exec_name(namelow) && !prev_archive && prev_real_ext) {
+                    if (looks_exec_name(namelow) && !prev_archive && prev_real_ext &&
+                        camouflage_doc_ext(prevext)) {
                         ++double_ext;
                         Finding f;
                         f.rule_id = "WIN.FILES.DOUBLEEXT.001";
                         f.severity = "medium";
                         f.confidence = "medium";
                         f.rationale = "疑似双扩展名伪装（" + prevext + " → " + lastext +
-                                      "）: " + fp + "——仅为伪装线索，需人工查看内容，不判定木马";
+                                      "）: " + fp + "——先当可执行文件处理，不要当文档打开";
                         f.object_ref = fp;
-                        f.advice_id = "ADVICE.WEBSHELL.REVIEW.001";
+                        f.advice_id = "ADVICE.TOOLS.REVIEW.001";
                         ctx.add_finding(f);
+                        did_double = true;
                     }
                 }
-                // 临时目录可执行
-                if (looks_exec_name(namelow) && is_writable_path(fp)) {
+                bool skip_noise = is_scanner_self_or_vendor(fp, namelow);
+                // 临时目录可执行（双扩展名已报过、扫描器自身、VMware 升级包跳过）
+                if (!did_double && !skip_noise && looks_exec_name(namelow) && is_writable_path(fp)) {
                     ++tempexe;
                     Finding f;
                     f.rule_id = "WIN.FILES.TEMPEXE.001";
@@ -1179,11 +1189,11 @@ void mod_files(ModuleCtx& ctx) {
                     f.confidence = "medium";
                     f.rationale = "可执行文件位于临时/可写目录: " + fp.substr(0, 180);
                     f.object_ref = fp;
-                    f.advice_id = "ADVICE.MINER.REVIEW.001";
+                    f.advice_id = "ADVICE.TOOLS.REVIEW.001";
                     ctx.add_finding(f);
                 }
                 // 最近 7 天修改的可执行/脚本（新投毒线索；mtime 线索级 low）
-                if (looks_exec_name(namelow)) {
+                if (!skip_noise && looks_exec_name(namelow)) {
                     SYSTEMTIME st;
                     FILETIME now_ft;
                     GetSystemTime(&st);
@@ -1209,7 +1219,7 @@ void mod_files(ModuleCtx& ctx) {
                         f.rationale = "最近 7 天内修改的可执行/脚本文件: " + fp.substr(0, 180) +
                                       "（mtime " + tbuf + "）——新投毒线索";
                         f.object_ref = fp;
-                        f.advice_id = "ADVICE.HASH.BASELINE.001";
+                        f.advice_id = "ADVICE.FILE.REVIEW.001";
                         ctx.add_finding(f);
                     }
                 }
@@ -1318,9 +1328,9 @@ void mod_ransom(ModuleCtx& ctx) {
                 f.severity = "high";
                 f.confidence = "low";
                 f.rationale = std::string("勒索软件痕迹（") + (is_note ? "勒索信" : "加密扩展名") +
-                              "）: " + d + "\\" + fd.cFileName + "——需人工核实内容";
+                              "）: " + d + "\\" + fd.cFileName + "——先拷走当证据再删勒索信";
                 f.object_ref = d + "\\" + fd.cFileName;
-                f.advice_id = "ADVICE.HASH.BASELINE.001";
+                f.advice_id = "ADVICE.RANSOM.REVIEW.001";
                 ctx.add_finding(f);
             }
         } while (FindNextFileA(fh, &fd));

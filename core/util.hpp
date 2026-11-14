@@ -37,4 +37,18 @@ std::string sanitize_utf8(const std::string& s);
 // 标准 base64 解码（容忍空白/填充缺失）；失败返回 false。
 bool base64_decode(const std::string& in, std::string& out);
 
+// invoice.pdf.exe 这类伪装：内层必须是常见文档/媒体扩展名。
+// .svc.exe、.3.exe 这种不算。
+inline bool camouflage_doc_ext(const std::string& prevext) {
+    static const char* k[] = {
+        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+        ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".txt", ".csv",
+        ".mp3", ".mp4", ".avi", ".html", ".htm", ".rtf", ".wps",
+        ".md", ".wav", nullptr
+    };
+    for (int i = 0; k[i]; ++i)
+        if (prevext == k[i]) return true;
+    return false;
+}
+
 } // namespace ctfir

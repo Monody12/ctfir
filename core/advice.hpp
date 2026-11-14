@@ -7,7 +7,7 @@ namespace ctfir {
 struct Advice {
     const char* id;
     const char* title;
-    const char* text;   // 七段式：解释/留证/复核/备份/处置/回滚/复查
+    const char* text;   // 短句操作说明；命令在「一条命令」里
 };
 
 // 未命中返回 nullptr

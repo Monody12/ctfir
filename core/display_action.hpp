@@ -12,13 +12,13 @@ namespace ctfir {
 struct DisplayAction {
     std::string title;
     std::string command;       // 一条已填对象的命令（可多行）
-    std::string contest_note;  // 空=无决赛特别说明
+    std::string contest_note;  // 空=无额外提醒
     Bucket bucket = Bucket::Trace;
 };
 
 DisplayAction display_action(const Finding& f);
 
-// 六步手册中的 <账户名> 等占位符换成 object_ref 解析结果（含一条命令）
+// 把 <账户名> 等占位符换成 object_ref 解析结果（含一条命令）
 std::string instantiate_advice(const Finding& f);
 // 仅手册正文（已替换占位符，不含命令头）
 std::string instantiate_advice_body(const Finding& f);

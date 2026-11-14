@@ -120,7 +120,7 @@ static int cmd_doctor() {
     std::printf(" \"schema_version\":%d,\n", kSchemaVersion);
     size_t n = build_platform_modules().size();
     std::printf(" \"modules_registered\":%zu,\n", n);
-    std::printf(" \"notes\":\"只读工具；未实现/受限模块在报告中如实列出\"\n}\n");
+    std::printf(" \"notes\":\"未实现或权限不够的检查会在报告里列出\"\n}\n");
     if (hc.level == "warn")
         std::fprintf(stderr, "[ctfir] 兼容性: %s\n", hc.note.c_str());
     return 0;
@@ -129,23 +129,16 @@ static int cmd_doctor() {
 // 应急响应 15 分钟总纲（内置离线帮助）
 static int cmd_help() {
     std::printf(
-        "ctfir %s — 应急响应 15 分钟总纲（配合本工具使用）\n"
+        "ctfir %s — 15 分钟处置顺序\n"
         "==============================================\n"
-        "拿到一台可疑机器后按此顺序处置（每步都可被 ctfir 覆盖）：\n"
-        " 1. 存活现场：先取证（截图/内存如授权），不要急着重启\n"
-        " 2. 进程与网络:   ctfir scan --out . --profile quick  → 看 WIN.PROCNET/WIN.PROCCMD/LNX.PROC\n"
-        " 3. 账户:         看 WIN.ACC/LNX.ACC（隐藏/UID0/管理员组/4720 时间线）\n"
-        " 4. 持久化:       任务/服务/启动项/cron/systemd/登录脚本\n"
-        " 5. 登录日志:     WIN.EVTLOG(4624/4625/4720-4732) / LNX.LOGINS/LNX.LOG\n"
-        " 6. Web 痕迹:     WIN.WEB / LNX.WEB（webshell 特征 + POST Top IP）\n"
-        " 7. 执行痕迹:     Prefetch/ShimCache/bash_history/wtmp\n"
-        " 8. 文件巡检:     --dir 自定目录 + --baseline 基线比对\n"
-        " 9. 处置:         ctfir actions --session 目录 --bucket clear\n"
-        "                  复制已填命令人工执行（停用先于删除；决赛持久化须删除）\n"
-        "10. 复查:         处置后重扫 + ctfir diff --a 旧 --b 新 确认变化\n"
-        "\n个人赛/团队赛主机侧都用 --profile full（quick 不含 Web/中间件，团队赛会漏点）。\n"
-        "速查手册: ctfir playbook <user|task|service|process|startup|hosts|sshkey|cron|profile|preload|webshell|hash|log|ad|harden>\n"
-        "红线: GUI 无修复按钮，不做 SFC/DISM/一键系统修复。CLI 可选 ctfir fix（白名单+备份）。\n",
+        " 1. 先扫：ctfir scan --out out\n"
+        " 2. 先清：账户 / 启动项 / 服务 / 任务 / cron / webshell / 工具\n"
+        " 3. Web：站点文件、Redis、MySQL\n"
+        " 4. 溯源：日志 Top IP、history、4720，写进报告，不要清日志\n"
+        " 5. 加固：密码策略、防火墙、sshd（题面要求再改）\n"
+        " 6. 清单：对照项，不必删\n"
+        "复制命令自己执行。持久化要删掉才算。处置后再扫一遍。\n"
+        "手册: ctfir playbook <user|task|service|startup|hosts|sshkey|cron|preload|webshell|tools|ransom|log|ad|harden>\n",
         kToolVersion);
     return 0;
 }
@@ -168,12 +161,15 @@ static int cmd_playbook(int argc, char** argv) {
         {"ad", "ADVICE.AD.REVIEW.001"},          {"dc", "ADVICE.AD.REVIEW.001"},
         {"sysvol", "ADVICE.AD.REVIEW.001"},      {"ntds", "ADVICE.AD.REVIEW.001"},
         {"gpp", "ADVICE.AD.REVIEW.001"},         {"harden", "ADVICE.HARDEN.001"},
+        {"tools", "ADVICE.TOOLS.REVIEW.001"},    {"ransom", "ADVICE.RANSOM.REVIEW.001"},
+        {"rmt", "ADVICE.RMT.REVIEW.001"},        {"sunlogin", "ADVICE.RMT.REVIEW.001"},
+        {"redis", "ADVICE.MID.REVIEW.001"},      {"mysql", "ADVICE.MID.REVIEW.001"},
     };
     if (argc < 3) {
         std::fprintf(stderr,
             "用法: ctfir playbook <类型>\n"
             "类型: user logonhide task service startup hosts sshkey cron profile preload "
-            "webshell process miner hash log ad harden\n");
+            "webshell tools ransom rmt redis process miner hash log ad harden\n");
         return 3;
     }
     std::string t = to_lower(argv[2]);
@@ -291,7 +287,7 @@ static int cmd_scan(const std::string& out_dir,
         std::fprintf(stderr, "[ctfir] %s\n", reason.c_str());
         return 3;
     }
-    std::fprintf(stderr, "[ctfir] 会话 %s 开始（只读；输出 %s）\n",
+    std::fprintf(stderr, "[ctfir] 会话 %s 开始（输出 %s）\n",
                  sess.session().session_id.c_str(), out_dir.c_str());
 
     auto mods = build_platform_modules();
@@ -377,7 +373,7 @@ static int cmd_explain(int argc, char** argv) {
                                 e.payload.substr(0, 4000).c_str());
             }
         }
-        std::printf("--- 建议（复制参考，工具不执行）---\n%s\n", instantiate_advice(f).c_str());
+        std::printf("--- 怎么处理 ---\n%s\n", instantiate_advice(f).c_str());
     }
     return 0;
 }
@@ -423,9 +419,8 @@ static int cmd_actions(int argc, char** argv) {
     }
     if (dir.empty()) {
         std::fprintf(stderr,
-            "用法: ctfir actions --session <目录> [--bucket clear|harden|trace|web|all]\n"
-            "打印已填对象的命令（不执行）。比赛路径：scan → actions --bucket clear → 人工粘贴。\n"
-            "默认 bucket=clear（立刻清）。GUI 无修复按钮，本命令也不执行。\n");
+            "用法: ctfir actions --session <目录> [--bucket clear|web|trace|harden|all]\n"
+            "打印已填好对象的命令，不执行。默认先清后门。\n");
         return 3;
     }
     if (bucket == "kit") bucket = "clear";
@@ -446,7 +441,7 @@ static int cmd_actions(int argc, char** argv) {
         std::printf(":: [%s] %s\n:: 对象 %s\n%s\n",
                     t.bucket_zh, da.title.c_str(), f.object_ref.c_str(), da.command.c_str());
         if (!da.contest_note.empty())
-            std::printf(":: 决赛 %s\n", da.contest_note.c_str());
+            std::printf(":: %s\n", da.contest_note.c_str());
         std::printf("\n");
     }
     std::fprintf(stderr, "[ctfir] 已列出 %d 条命令（不执行）。复制粘贴到管理员 cmd。\n", n);
@@ -456,15 +451,14 @@ static int cmd_actions(int argc, char** argv) {
 int main(int argc, char** argv) {
     if (argc < 2) {
         std::fprintf(stderr,
-            "ctfir %s — CTF 只读应急扫描助手\n"
+            "ctfir %s — 应急检查\n"
             "用法:\n"
             "  ctfir version\n"
             "  ctfir doctor\n"
             "  ctfir scan --out <目录>\n"
-            "  ctfir actions --session <目录> [--bucket clear|harden|trace|web|all]\n"
+            "  ctfir actions --session <目录> [--bucket clear|web|trace|harden|all]\n"
             "  ctfir explain --session <目录> --finding <ID或规则ID>\n"
-            "  ctfir report --session <目录> [--redact]\n"
-            "  （GUI 无修复按钮；CLI 可选 ctfir fix，默认只读）\n",
+            "  ctfir report --session <目录>\n",
             kToolVersion);
         return 3;
     }

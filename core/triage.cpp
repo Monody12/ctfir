@@ -18,16 +18,25 @@ const char* bucket_id(Bucket b) {
 
 const char* bucket_zh(Bucket b) {
     switch (b) {
-    case Bucket::Clear: return "立刻清";
-    case Bucket::Harden: return "再加固";
-    case Bucket::Trace: return "溯源";
-    case Bucket::Web: return "Web/中间件";
-    case Bucket::Inventory: return "清单/事实";
+    case Bucket::Clear: return "1.先清";
+    case Bucket::Web: return "2.Web";
+    case Bucket::Trace: return "3.溯源";
+    case Bucket::Harden: return "4.加固";
+    case Bucket::Inventory: return "5.清单";
     }
-    return "溯源";
+    return "3.溯源";
 }
 
-int bucket_rank(Bucket b) { return static_cast<int>(b); }
+int bucket_rank(Bucket b) {
+    switch (b) {
+    case Bucket::Clear: return 0;
+    case Bucket::Web: return 1;
+    case Bucket::Trace: return 2;
+    case Bucket::Harden: return 3;
+    case Bucket::Inventory: return 4;
+    }
+    return 5;
+}
 
 int severity_rank(const std::string& sev) {
     if (sev == "high") return 0;
@@ -51,7 +60,7 @@ static bool has(const std::string& rid, const char* needle) {
 Bucket bucket_of(const std::string& rule_id) {
     const std::string& r = rule_id;
     if (has(r, "INVENTORY") || has(r, "TASK.FACT") || has(r, "TIMER.FACT") ||
-        has(r, "FILES.RECENT") || has(r, "BASE.RECENT") || has(r, "FILES.TEMPEXE") ||
+        has(r, "FILES.RECENT") || has(r, "BASE.RECENT") ||
         has(r, "CMDRECENT") || has(r, "WIN.AD.ROLE"))
         return Bucket::Inventory;
 
@@ -87,7 +96,7 @@ Bucket bucket_of(const std::string& rule_id) {
     if (has(r, "AUTORUN") || has(r, "PERSIST") || has(r, "TASK.SUSPECT") ||
         has(r, "TASK.REFPATH") || has(r, "SVC.") || has(r, "HOSTS") ||
         has(r, "PORTPROXY") || has(r, "SHARE.NONDEFAULT") || has(r, "DOUBLEEXT") ||
-        has(r, "FILES.ADS") || has(r, "WEBSHELL") || has(r, "WEB.SHELL") ||
+        has(r, "FILES.TEMPEXE") || has(r, "FILES.ADS") || has(r, "WEBSHELL") || has(r, "WEB.SHELL") ||
         has(r, "BLACKLINK") || has(r, "CONFIGBACKDOOR") || has(r, "SSH.AUTHKEY") ||
         has(r, "SSH.PRIVKEY") || has(r, "SSH.HIDDENKEY") || has(r, "SSH.PROXYCMD") ||
         has(r, "SSHLOG") || has(r, "TOOLS") || has(r, "RANSOM") || has(r, "RMT.") ||
@@ -269,6 +278,7 @@ static const struct TitleRow { const char* id; const char* title; } kTitles[] = 
     {"LNX.TRACE.HISTORY.001", "bash_history 可疑命令"},
     {"LNX.PERSIST.SYSTEMD.001", "systemd 单元可疑 Exec"},
     {"LNX.PERSIST.RCLOCAL.001", "rc.local 可疑行"},
+    {"LNX.PERSIST.INITD.001", "SysV init.d 后门脚本"},
     {"LNX.PROC.MINER.001", "疑似挖矿进程"},
     {"LNX.PROC.DELETED.001", "进程 exe 已删除"},
     {"LNX.SUID.UNEXPECTED.001", "意外 SUID 文件"},
@@ -324,6 +334,7 @@ static const struct TitleRow { const char* id; const char* title; } kTitles[] = 
     {"LNX.PERSIST.PYHOOK.001", "Python sitecustomize 钩子"},
     {"LNX.PERSIST.BASHFUNC.001", "bashrc 函数后门"},
     {"LNX.PERSIST.UDEV.001", "udev 规则持久化"},
+    {"LNX.PERSIST.XINETD.001", "xinetd/inetd 后门服务"},
     {"LNX.RANSOM.TRACE.001", "勒索痕迹"},
     {"LNX.RANSOM.SCRIPT.001", "勒索脚本"},
     {"LNX.TOOLS.ARTIFACT.001", "攻击工具残留"},
@@ -375,7 +386,7 @@ Triage triage_of(const Finding& f) {
     t.bucket_id = bucket_id(t.bucket);
     t.bucket_zh = bucket_zh(t.bucket);
     t.title_zh = title_zh_of(f);
-    t.default_visible = (t.bucket != Bucket::Inventory);
+    t.default_visible = true;
     return t;
 }
 

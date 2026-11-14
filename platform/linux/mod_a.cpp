@@ -1,8 +1,10 @@
 // Linux A 级模块：L01 账户 / L02 SSH / L03 cron / L04 shell 持久化 / L05 preload / L06 hosts / L13 痕迹
 #include "lnx_common.hpp"
+#include "core/lnx_heuristics.hpp"
 
 #include <cstring>
 #include <map>
+#include <set>
 
 namespace ctfir::lnx {
 
@@ -31,10 +33,10 @@ void mod_acc(ModuleCtx& ctx) {
                 f.rule_id = "LNX.ACC.UID0.001";
                 f.severity = "high";
                 f.confidence = "medium"; // 事实确定；是否授权需人工核实（PLAN §9.4 示例口径）
-                f.rationale = "发现名称非 root 但 UID=0 的本地账户（第 " + std::to_string(no) +
-                              " 行）：等价 root 权限，需立即核实是否授权创建";
+                f.rationale = "账户 " + name + " 的 UID=0（/etc/passwd 第 " + std::to_string(no) +
+                              " 行），等于第二个 root";
                 f.evidence_paths = {"/etc/passwd"};
-                f.object_ref = "/etc/passwd:" + std::to_string(no);
+                f.object_ref = "/etc/passwd:" + name;
                 f.limitations = {"仅本地文件账户；NSS/域账户不在范围；不能证明内核未被控制"};
                 f.advice_id = "ADVICE.ACC.REVIEW.001";
                 ctx.add_finding(f);
@@ -49,6 +51,10 @@ void mod_acc(ModuleCtx& ctx) {
                 f.rationale = "UID " + std::to_string(uid) + " 被多个账户共享: " + join(names, ", ") +
                               "（授权运维可合法共享；需核实）";
                 f.evidence_paths = {"/etc/passwd"};
+                std::string shown = names[0];
+                for (const auto& n : names)
+                    if (n != "root") { shown = n; break; }
+                f.object_ref = "/etc/passwd:" + shown;
                 f.limitations = {"重复 UID 本身不必然恶意"};
                 f.advice_id = "ADVICE.ACC.REVIEW.001";
                 ctx.add_finding(f);
@@ -66,15 +72,16 @@ void mod_acc(ModuleCtx& ctx) {
             int p3 = static_cast<int>(t.find(':', p2 + 1));
             if (p2 < 0 || p3 < 0) return;
             int gid = std::atoi(t.substr(p2 + 1, p3 - p2 - 1).c_str());
+            std::string gname = t.substr(0, p1);
             std::string members = t.substr(p3 + 1);
             if (gid == 0 && !members.empty() && members.find("root") == std::string::npos) {
                 Finding f;
                 f.rule_id = "LNX.ACC.GID0.001";
                 f.severity = "low";
                 f.confidence = "medium";
-                f.rationale = "root 组(GID 0) 含非 root 成员: " + members + "（授权运维可合法；需核实）";
+                f.rationale = "组 " + gname + " 的 GID=0，成员: " + members + "（授权运维可合法；需核实）";
                 f.evidence_paths = {"/etc/group"};
-                f.object_ref = "/etc/group:" + std::to_string(no);
+                f.object_ref = "/etc/group:" + gname;
                 f.advice_id = "ADVICE.ACC.REVIEW.001";
                 ctx.add_finding(f);
             }
@@ -88,12 +95,14 @@ void mod_acc(ModuleCtx& ctx) {
             std::string t = trim(line);
             if (t.empty() || t[0] == '#') return;
             if (contains_ci(t, "NOPASSWD") && contains_ci(t, "ALL")) {
+                size_t sp = t.find_first_of(" \t");
+                std::string who = sp == std::string::npos ? t : t.substr(0, sp);
                 Finding f;
                 f.rule_id = "LNX.ACC.SUDOERS.001";
                 f.severity = "medium";
                 f.confidence = "medium";
-                f.rationale = "sudoers 存在免密 ALL 授权（第 " + std::to_string(no) +
-                              " 行）：若非授权配置属高危；Include 的 sudoers.d 单独核对";
+                f.rationale = "sudoers 第 " + std::to_string(no) + " 行给 " + who +
+                              " 免密 ALL：若非授权配置属高危";
                 f.evidence_paths = {"/etc/sudoers"};
                 f.object_ref = "/etc/sudoers:" + std::to_string(no);
                 f.advice_id = "ADVICE.ACC.REVIEW.001";
@@ -108,11 +117,14 @@ void mod_acc(ModuleCtx& ctx) {
             std::string t = trim(line);
             if (t.empty() || t[0] == '#') return;
             if (contains_ci(t, "NOPASSWD") && contains_ci(t, "ALL")) {
+                size_t sp = t.find_first_of(" \t");
+                std::string who = sp == std::string::npos ? t : t.substr(0, sp);
                 Finding fd;
                 fd.rule_id = "LNX.ACC.SUDOERS.001";
                 fd.severity = "medium";
                 fd.confidence = "medium";
-                fd.rationale = "sudoers.d 免密 ALL 授权：" + f + "（第 " + std::to_string(no) + " 行）";
+                fd.rationale = "sudoers.d 给 " + who + " 免密 ALL：" + f + " 第 " +
+                               std::to_string(no) + " 行";
                 fd.evidence_paths = {f};
                 fd.object_ref = f + ":" + std::to_string(no);
                 fd.advice_id = "ADVICE.ACC.REVIEW.001";
@@ -185,6 +197,7 @@ void mod_ssh(ModuleCtx& ctx) {
         read_source(ctx, d, false);
 
     // 各用户 authorized_keys / 私钥存在性（不读取私钥内容）
+    std::set<std::string> seen_ak, seen_cfg, seen_hidden;
     ReadResult pw = read_text_file("/etc/passwd", 1024 * 1024);
     if (pw.ok) {
         for_each_line(pw.content, [&](int, const std::string& line) {
@@ -199,9 +212,11 @@ void mod_ssh(ModuleCtx& ctx) {
             std::string home = t.substr(p5 + 1, p6 - p5 - 1);
             std::string name = t.substr(0, p1);
             if (home.empty() || home[0] != '/') return;
-            std::string ak = home + "/.ssh/authorized_keys";
+            for (const char* kn : {"authorized_keys", "authorized_keys2"}) {
+            std::string ak = home + "/.ssh/" + kn;
             ReadResult r = read_source(ctx, ak, false);
             if (r.ok && !trim(r.content).empty()) {
+                if (!seen_ak.insert(ak).second) continue;
                 // 指纹 + 危险选项
                 std::vector<std::string> fingerprints;
                 bool has_cmd = false;
@@ -235,6 +250,7 @@ void mod_ssh(ModuleCtx& ctx) {
                               (fingerprints.empty() ? "解析失败" : join(fingerprints, ",")) +
                               "）——公钥存在属正常，需逐条核对归属";
                 f.evidence_paths = {ak};
+                f.object_ref = ak;
                 f.limitations = {"仅记录指纹不保存公钥/私钥本体；options 语义未全量求值"};
                 f.advice_id = "ADVICE.SSHKEY.REVIEW.001";
                 if (has_cmd) {
@@ -243,11 +259,12 @@ void mod_ssh(ModuleCtx& ctx) {
                 }
                 ctx.add_finding(f);
             }
+            } // authorized_keys / authorized_keys2
             // .ssh/config ProxyCommand 后门
             {
                 std::string cfg = home + "/.ssh/config";
                 ReadResult cr = read_source(ctx, cfg, false);
-                if (cr.ok) {
+                if (cr.ok && seen_cfg.insert(cfg).second) {
                     for_each_line(cr.content, [&](int lno, const std::string& l) {
                         std::string tl = trim(l);
                         if (contains_ci(tl, "ProxyCommand") &&
@@ -298,6 +315,7 @@ void mod_ssh(ModuleCtx& ctx) {
                               bl.find("id_ed25519") != std::string::npos ||
                               bl.find("id_ecdsa") != std::string::npos;
                 if (!keyish) continue;
+                if (!seen_hidden.insert(hp).second) continue;
                 Finding f;
                 f.rule_id = "LNX.SSH.HIDDENKEY.001";
                 f.severity = "medium";
@@ -374,7 +392,9 @@ void mod_shell(ModuleCtx& ctx) {
                 files.push_back(home + rc);
         });
     }
+    std::set<std::string> seen_profile;
     for (const auto& f : files) {
+        if (!seen_profile.insert(f).second) continue;
         ReadResult r = read_source(ctx, f, false);
         if (!r.ok) continue;
         for_each_line(r.content, [&](int no, const std::string& line) {
@@ -387,10 +407,9 @@ void mod_shell(ModuleCtx& ctx) {
                  contains_ci(t, "nc "))) {
                 suspicious = true;
                 why = "PROMPT_COMMAND 含网络/解码特征";
-            } else if (starts_with(t, "alias ") &&
-                       (contains_ci(t, "curl") || contains_ci(t, "wget") || contains_ci(t, "nc "))) {
+            } else if (profile_alias_is_hijack(t)) {
                 suspicious = true;
-                why = "alias 指向网络命令";
+                why = "alias 劫持了系统命令";
             } else if (contains_ci(t, "PATH=") &&
                        (t.find("/tmp") != std::string::npos ||
                         t.find("/dev/shm") != std::string::npos)) {
@@ -490,6 +509,14 @@ void mod_hosts(ModuleCtx& ctx) {
                 continue;
             }
             if (starts_with(name, "localhost")) continue;
+            static std::string hostname;
+            static bool host_loaded = false;
+            if (!host_loaded) {
+                ReadResult hn = read_text_file("/etc/hostname", 256);
+                if (hn.ok) hostname = trim(hn.content);
+                host_loaded = true;
+            }
+            if (!hostname.empty() && name == hostname) continue;
             Finding f;
             f.rule_id = "LNX.HOSTS.MAP.001";
             f.severity = "low";
@@ -527,6 +554,7 @@ void mod_trace(ModuleCtx& ctx) {
     // 各用户 bash_history
     ReadResult pw = read_text_file("/etc/passwd", 1024 * 1024);
     if (pw.ok) {
+        std::set<std::string> seen_hist;
         for_each_line(pw.content, [&](int, const std::string& line) {
             std::string t = trim(line);
             int seen = 0, p5 = 0, p6 = 0;
@@ -540,15 +568,14 @@ void mod_trace(ModuleCtx& ctx) {
             ReadResult r = read_source(ctx, home + "/.bash_history", false);
             if (!r.ok) return;
             for_each_line(r.content, [&](int no, const std::string& l) {
-                auto hits = match_tokens(l);
-                if (hits.empty()) return;
-                std::string whys;
-                for (auto& [tk, why] : hits) whys += tk + " ";
+                if (!history_line_is_clue(l)) return;
+                std::string href = home + "/.bash_history:" + std::to_string(no);
+                if (!seen_hist.insert(href).second) return;
                 Finding f;
                 f.rule_id = "LNX.TRACE.HISTORY.001";
                 f.severity = "medium";
                 f.confidence = "low"; // 历史是线索非结论
-                f.rationale = "用户 " + name + " 的 bash_history 含可疑命令: " + whys;
+                f.rationale = "用户 " + name + " 的 bash_history 含可疑命令: " + trim(l).substr(0, 120);
                 f.evidence_paths = {home + "/.bash_history"};
                 f.object_ref = home + "/.bash_history:" + std::to_string(no);
                 f.limitations = {"历史为线索非结论；history 可能被清空/篡改"};

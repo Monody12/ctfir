@@ -258,7 +258,7 @@ void mod_ad_files(ModuleCtx& ctx) {
         role.rationale =
             "本机是工作站（ProductType=" + (pt.empty() ? "WinNT?" : pt) +
             "）。不能把本地 Administrators 当成 Domain Admins。"
-            "若赛题是域控，应在 DC 上跑本工具；本机仍会扫 GPP/NTDS 文件痕迹。";
+            "若赛题是域控，到 DC 上再扫一遍 GPP/NTDS。本机仍会扫落到磁盘上的副本。";
     }
     ctx.add_finding(role);
 

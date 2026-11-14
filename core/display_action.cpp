@@ -3,9 +3,16 @@
 #include "remediate.hpp"
 #include "util.hpp"
 
+#include <cstring>
 #include <sstream>
 
 namespace ctfir {
+
+// Findings contain attacker-controlled names. Refuse to interpolate shell syntax.
+static bool safe_command_object(const std::string& s, bool win) {
+    const std::string bad = win ? "\"\r\n&|<>^%!" : "\"'`$\r\n;&|<>";
+    return s.find_first_of(bad) == std::string::npos;
+}
 
 static std::string after_last(const std::string& s, char sep) {
     size_t p = s.rfind(sep);
@@ -39,8 +46,30 @@ static bool is_persist_rule(const std::string& rid) {
            rid.find("AD.GPO") != std::string::npos;
 }
 
+static bool is_digits(const std::string& s) {
+    if (s.empty()) return false;
+    for (char c : s)
+        if (c < '0' || c > '9') return false;
+    return true;
+}
+
+static std::string path_of_ref(const std::string& obj) {
+    size_t p = obj.rfind(':');
+    if (p == std::string::npos || p == 0) return obj;
+    if (is_digits(obj.substr(p + 1))) return obj.substr(0, p);
+    return obj;
+}
+
+static std::string line_of_ref(const std::string& obj) {
+    size_t p = obj.rfind(':');
+    if (p == std::string::npos) return {};
+    std::string a = obj.substr(p + 1);
+    return is_digits(a) ? a : std::string();
+}
+
 static std::string account_of(const Finding& f) {
     const std::string& o = f.object_ref;
+    const std::string& rid = f.rule_id;
     if (starts_with(o, "NetUserEnum:")) return o.substr(12);
     if (starts_with(o, "Administrators:")) {
         std::string n = o.substr(15);
@@ -51,13 +80,22 @@ static std::string account_of(const Finding& f) {
     if (o.find("UserList\\") != std::string::npos) return after_last(o, '\\');
     if (starts_with(o, "/etc/passwd:") || starts_with(o, "/etc/shadow:"))
         return after_last(o, ':');
-    if (starts_with(f.rule_id, "WIN.ACC.") || starts_with(f.rule_id, "LNX.ACC."))
+    if (rid == "LNX.ACC.UID0.001" || rid == "LNX.ACC.DUPUID.001" ||
+        rid == "LNX.BASE.EMPTYPWD.001" || rid == "LNX.BASE.SYSACCT.001" ||
+        rid == "LNX.BASE.WEAKPWD.001")
+        return after_last(o, ':');
+    if (starts_with(rid, "WIN.ACC.")) {
+        std::string n = after_last(o, ':');
+        if (n == "NetUserEnum" || n == "Shares") return {};
+        return n;
+    }
+    if (rid == "LNX.ACC.GID0.001" && starts_with(o, "/etc/group:"))
         return after_last(o, ':');
     return {};
 }
 
 static std::string contest_persist() {
-    return "决赛：持久化必须删除该对象，注释或改名通常不得分。先留证再操作。";
+    return "这条要删掉，注释或改名经常不算。先拷走再删。";
 }
 
 static bool is_win_path(const std::string& s) {
@@ -72,7 +110,7 @@ static std::string share_commands(const Finding& f) {
         if (p == std::string::npos) p = ln.find(" -> ");
         if (p == std::string::npos) continue;
         std::string name = trim(ln.substr(0, p));
-        if (name.empty() || ends_with(name, "$")) continue;
+        if (name.empty() || ends_with(name, "$") || !safe_command_object(name, true)) continue;
         if (!out.empty()) out += "\r\n";
         out += "net share \"" + name + "\" /delete";
     }
@@ -112,7 +150,9 @@ static std::string from_plan(const Finding& f) {
             std::string spec = op.substr(18);
             std::string file = before_last(spec, ':');
             std::string line = after_last(spec, ':');
-            return "删除 " + file + " 第 " + line + " 行（不要清空整个文件）；Windows 再执行 ipconfig /flushdns";
+            if (file.find("/etc/hosts") != std::string::npos)
+                return "sed -i '" + line + "d' \"" + file + "\"";
+            return "notepad \"" + file + "\"\r\n# 只删第 " + line + " 行，不要清空文件\r\nipconfig /flushdns";
         }
         if (starts_with(op, "linux_comment_line:")) {
             std::string spec = op.substr(19);
@@ -138,6 +178,10 @@ DisplayAction display_action(const Finding& f) {
     const std::string& rid = f.rule_id;
     const std::string& obj = f.object_ref;
     std::string acct = account_of(f);
+    if (!safe_command_object(obj, starts_with(rid, "WIN."))) {
+        a.contest_note = "对象含 shell 特殊字符：仅留证，不生成可复制执行命令";
+        return a;
+    }
 
     if (t.bucket == Bucket::Inventory) {
         a.command = "无需删除，仅供对照";
@@ -164,6 +208,115 @@ DisplayAction display_action(const Finding& f) {
                     exe + "\" /v Debugger /f";
     } else if (rid == "WIN.AUTORUN.LOGONSCRIPT.001") {
         a.command = "reg delete \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\" /v UserInitMprLogonScript /f";
+    } else if (rid == "WIN.AUTORUN.APPINIT.001") {
+        a.command =
+            "reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Windows\" /v AppInit_DLLs /t REG_SZ /d \"\" /f\r\n"
+            "reg add \"HKLM\\SOFTWARE\\Wow6432Node\\Microsoft\\Windows NT\\CurrentVersion\\Windows\" /v AppInit_DLLs /t REG_SZ /d \"\" /f\r\n"
+            "# 依据里的 .dll 先拷走再 del";
+    } else if (rid == "WIN.AUTORUN.SUSPECT.001" || rid == "WIN.AUTORUN.REFPATH.001") {
+        if (is_win_path(obj)) {
+            a.command = "del /f \"" + obj + "\"";
+        } else {
+            std::string name = after_last(obj, '\\');
+            if (name.empty()) name = obj;
+            a.command =
+                "reg delete \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run\" /v \"" + name + "\" /f\r\n"
+                "reg delete \"HKLM\\SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Run\" /v \"" + name + "\" /f\r\n"
+                "reg delete \"HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run\" /v \"" + name + "\" /f";
+        }
+    } else if (rid == "WIN.SVC.SUSPECT.001") {
+        std::string name = after_tok(obj, "Services\\");
+        if (name.empty()) name = after_last(obj, '\\');
+        a.command = "sc stop \"" + name + "\"\r\nsc config \"" + name + "\" start= disabled\r\nsc delete \"" + name + "\"";
+    } else if (rid == "WIN.TASK.SUSPECT.001") {
+        std::string tn = after_tok(obj, "Task\\");
+        if (tn.empty()) tn = after_last(obj, '\\');
+        if (!tn.empty() && tn[0] != '\\') tn = "\\" + tn;
+        a.command = "schtasks /end /tn \"" + tn + "\"\r\nschtasks /delete /tn \"" + tn + "\" /f";
+    } else if (rid == "WIN.TRACE.PSHIST.001") {
+        a.command = "findstr /n /i /c:\"IEX\" /c:\"-enc\" /c:\"DownloadString\" \"" + path_of_ref(obj) +
+                    "\"\r\n# 历史是线索，不要删整个文件";
+        a.contest_note.clear();
+    } else if (rid == "WIN.RMT.SOFTWARE.001") {
+        a.command = "dir /s /b \"" + obj + "\"\r\n# 题面要求卸载就卸；目录可 rd /s /q \"" + obj + "\"";
+        a.contest_note.clear();
+    } else if (rid == "WIN.RANSOM.TRACE.001") {
+        a.command = "mkdir %TEMP%\\ransom-evidence 2>nul\r\ncopy /y \"" + obj +
+                    "\" %TEMP%\\ransom-evidence\\\r\ndel /f \"" + obj + "\"";
+    } else if (rid == "LNX.RANSOM.TRACE.001" || rid == "LNX.RANSOM.SCRIPT.001") {
+        a.command = "cp \"" + obj + "\" /tmp/ransom-evidence-$(basename \"" + obj + "\")\nrm -f \"" + obj + "\"";
+    } else if (rid == "WIN.HOSTS.MAP.001" || rid == "WIN.HOSTS.LOOPBACK.001") {
+        std::string ln = line_of_ref(obj);
+        a.command = "notepad \"" + path_of_ref(obj) + "\"\r\n# 只删第 " +
+                    (ln.empty() ? "命中" : ln) + " 行，不要清空文件\r\nipconfig /flushdns";
+    } else if (rid == "LNX.HOSTS.MAP.001" || rid == "LNX.HOSTS.LOOPBACK.001") {
+        std::string ln = line_of_ref(obj);
+        a.command = "sed -i '" + (ln.empty() ? "Nd" : ln + "d") + "' /etc/hosts";
+    } else if (rid == "LNX.PERSIST.CRON.001") {
+        std::string file = path_of_ref(obj);
+        std::string ln = line_of_ref(obj);
+        if (file.find("cron.d") != std::string::npos)
+            a.command = "rm -f \"" + file + "\"";
+        else if (!ln.empty())
+            a.command = "sed -i '" + ln + "d' \"" + file + "\"";
+        else
+            a.command = "crontab -l";
+    } else if (rid == "LNX.PERSIST.AT.001") {
+        a.command = "rm -f \"" + path_of_ref(obj) + "\"";
+    } else if (rid == "LNX.BASE.PWDMAX.001") {
+        a.command = "sed -i 's/^PASS_MAX_DAYS.*/PASS_MAX_DAYS   90/' /etc/login.defs";
+        a.contest_note.clear();
+    } else if (rid == "LNX.BASE.PWDLEN.001") {
+        a.command = "sed -i 's/^PASS_MIN_LEN.*/PASS_MIN_LEN    8/' /etc/login.defs";
+        a.contest_note.clear();
+    } else if (rid == "LNX.BASE.TMOUT.001") {
+        a.command = "grep -q '^TMOUT=' /etc/profile || echo 'TMOUT=300' >> /etc/profile";
+        a.contest_note.clear();
+    } else if (rid == "LNX.BASE.UMASK.001") {
+        std::string file = path_of_ref(obj);
+        std::string ln = line_of_ref(obj);
+        if (!ln.empty())
+            a.command = "sed -i '" + ln + "s/umask .*/umask 027/' \"" + file + "\"";
+        else
+            a.command = "sed -i 's/umask 0[0-9][0-9]/umask 027/' \"" + file + "\"";
+        a.contest_note.clear();
+    } else if (rid == "LNX.BASE.FAILLOCK.001") {
+        a.command = "grep -n faillock /etc/pam.d/* /etc/pam.d/system-auth /etc/pam.d/password-auth 2>/dev/null | head\n"
+                    "# CentOS 7 可加: auth required pam_tally2.so deny=5 unlock_time=600 even_deny_root";
+        a.contest_note.clear();
+    } else if (rid == "LNX.BASE.KPARAM.001") {
+        if (obj.find("ip_forward") != std::string::npos)
+            a.command = "sysctl -w net.ipv4.ip_forward=0";
+        else if (obj.find("dmesg_restrict") != std::string::npos)
+            a.command = "sysctl -w kernel.dmesg_restrict=1";
+        else {
+            std::string key = obj;
+            if (starts_with(key, "/proc/sys/")) key = key.substr(10);
+            for (char& c : key) if (c == '/') c = '.';
+            a.command = "sysctl -w " + key + "=<按题面>";
+        }
+        a.contest_note.clear();
+    } else if (rid == "LNX.BASE.CAD.001") {
+        a.command = "systemctl mask ctrl-alt-del.target 2>/dev/null || rm -f /etc/init/control-alt-delete.conf";
+        a.contest_note.clear();
+    } else if (rid == "LNX.BASE.COREDUMP.001") {
+        a.command = "grep -q 'hard core' /etc/security/limits.conf || echo '* hard core 0' >> /etc/security/limits.conf";
+        a.contest_note.clear();
+    } else if (rid == "LNX.BASE.DROPRIGHT.001") {
+        std::string pid = after_tok(obj, "PID ");
+        if (pid.empty()) pid = "<pid>";
+        a.command = "ps -o user,pid,cmd -p " + pid + "\n# 中间件不要用 root 跑，改 User= 后重启";
+        a.contest_note.clear();
+    } else if (rid == "MID.MYSQL.LOGSHELL.001" || rid == "MID.MYSQL.ERRSHELL.001" ||
+               rid == "MID.MYSQL.UDF.001") {
+        a.command = "mv \"" + path_of_ref(obj) + "\" \"" + path_of_ref(obj) + ".quarantine\"";
+    } else if (rid == "MID.MYSQL.SLOWLOG.001" || rid == "MID.MYSQL.BINLOG.001") {
+        std::string logf = path_of_ref(obj);
+        if (is_win_path(logf))
+            a.command = "findstr /i \"OUTFILE sys_eval sys_exec\" \"" + logf + "\"\r\n# 日志是线索，不要删";
+        else
+            a.command = "grep -nE 'OUTFILE|sys_eval|sys_exec' \"" + logf + "\" | head\n# 日志是线索，不要删";
+        a.contest_note.clear();
     } else if (rid == "WIN.BASE.UAC.001") {
         a.command = "reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\" /v EnableLUA /t REG_DWORD /d 1 /f";
         a.contest_note.clear();
@@ -180,7 +333,9 @@ DisplayAction display_action(const Finding& f) {
         a.command = ads_del_cmd(obj);
         if (a.command.empty())
             a.command = "del \"" + obj + "\"   （Win7 用 del 文件:流名，不要用 PowerShell -Stream）";
-    } else if (rid == "WIN.FILES.DOUBLEEXT.001") {
+    } else if (rid == "WIN.FILES.DOUBLEEXT.001" || rid == "WIN.FILES.TEMPEXE.001" ||
+               rid == "WIN.WEB.WEBSHELL.001" ||
+               rid == "WIN.TOOLS.ARTIFACT.001" || rid == "WIN.TOOLS.FRPCFG.001") {
         a.command = "del /f \"" + obj + "\"";
     } else if (rid == "WIN.BASE.PWDLEN.001") {
         a.command = "net accounts /minpwlen:8";
@@ -216,7 +371,7 @@ DisplayAction display_action(const Finding& f) {
         a.command = "reg query \"HKLM\\SOFTWARE\\Microsoft\\Active Setup\\Installed Components\\" +
                     guid + "\" /v StubPath";
         if (is_known_ms_activesetup(obj)) {
-            a.contest_note = "微软预装组件（IE/WMP 等），默认不要删。切「全部」可见。";
+            a.contest_note = "微软预装组件（IE/WMP），一般不用删。";
         } else {
             a.command += "\r\nreg delete \"HKLM\\SOFTWARE\\Microsoft\\Active Setup\\Installed Components\\" +
                          guid + "\" /f";
@@ -238,7 +393,7 @@ DisplayAction display_action(const Finding& f) {
         a.command = "netstat -ano 对照 PID；先留证，不要直接杀进程";
         a.contest_note.clear();
     } else if (rid.find(".EVT.") != std::string::npos) {
-        a.command = "只记录时间线，禁止 wevtutil cl（清空日志毁证且通常不得分）";
+        a.command = "记下时间线，不要 wevtutil cl（清日志既毁证也经常不得分）";
         a.contest_note.clear();
     } else if (starts_with(rid, "WIN.AUTORUN.") && is_win_path(obj)) {
         a.command = "del /f \"" + obj + "\"";
@@ -300,7 +455,7 @@ DisplayAction display_action(const Finding& f) {
         a.contest_note.clear();
     } else if (rid == "WIN.BASE.FW.OFF.001") {
         a.command = "netsh advfirewall set allprofiles state on";
-        a.contest_note = "先放行 SSH/RDP/业务端口，再开防火墙。本工具不自动改防火墙。";
+        a.contest_note = "先放行 SSH/RDP/业务端口，再开防火墙。";
     } else if (rid == "WIN.BASE.PWDHIST.001") {
         a.command = "net accounts /uniquepw:5";
         a.contest_note.clear();
@@ -363,15 +518,146 @@ DisplayAction display_action(const Finding& f) {
     } else if (rid == "WIN.BASE.FORCEGUEST.001") {
         a.command = "reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\" /v ForceGuest /t REG_DWORD /d 0 /f";
         a.contest_note.clear();
+    } else if (rid == "LNX.ACC.UID0.001" || rid == "LNX.ACC.DUPUID.001" ||
+               rid == "LNX.BASE.EMPTYPWD.001" || rid == "LNX.BASE.SYSACCT.001") {
+        if (!acct.empty() && acct != "root")
+            a.command = "usermod -L \"" + acct + "\"\n# 家目录不是 /、/tmp、/var 再：userdel \"" + acct + "\"";
+        else
+            a.command = "grep -n ':0:' /etc/passwd\n# 非 root 的 UID=0 先 usermod -L";
+    } else if (rid == "LNX.ACC.SUDOERS.001") {
+        std::string file = path_of_ref(obj);
+        std::string ln = line_of_ref(obj);
+        if (file.find("sudoers.d") != std::string::npos)
+            a.command = "rm -f \"" + file + "\"";
+        else if (!ln.empty())
+            a.command = "sed -i '" + ln + "d' \"" + file + "\"";
+        else
+            a.command = "visudo -c\n# 删掉 NOPASSWD: ALL 那一行，不要清空整个 sudoers";
+    } else if (rid == "LNX.ACC.GID0.001") {
+        std::string g = after_last(obj, ':');
+        if (g.empty()) g = acct;
+        a.command = "sed -i '/^" + g + ":/d' /etc/group";
+    } else if (rid == "LNX.SSH.CONFIG.001") {
+        a.command = "sed -i 's/^PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config\nsshd -t && (systemctl reload sshd 2>/dev/null || service sshd reload)";
+    } else if (rid == "LNX.SSH.PWDAUTH.001") {
+        a.command = "sed -i 's/^PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config\nsshd -t && (systemctl reload sshd 2>/dev/null || service sshd reload)";
+    } else if (rid == "LNX.SSH.PORT.001" || rid == "LNX.SSH.MAXAUTH.001") {
+        std::string ln = line_of_ref(obj);
+        std::string file = path_of_ref(obj);
+        if (file.empty()) file = "/etc/ssh/sshd_config";
+        if (!ln.empty())
+            a.command = "sed -i '" + ln + "d' \"" + file + "\"\n# 多余 Port 删掉，保留 22\nsshd -t && (systemctl reload sshd 2>/dev/null || service sshd reload)";
+        else
+            a.command = "grep -n '^Port ' /etc/ssh/sshd_config\n# 只留 22";
+    } else if (rid == "LNX.SSH.AUTHKEY.001") {
+        std::string file = obj.empty() ? "~/.ssh/authorized_keys" : obj;
+        a.command = "cp \"" + file + "\" \"" + file + ".bak\"\n# 打开文件，一行一把钥匙，多出来的删掉，chmod 600";
+    } else if (rid == "LNX.SSH.HIDDENKEY.001") {
+        a.command = "rm -f \"" + obj + "\"";
+    } else if (rid == "LNX.SSH.PROXYCMD.001") {
+        std::string file = path_of_ref(obj);
+        std::string ln = line_of_ref(obj);
+        if (!ln.empty())
+            a.command = "sed -i '" + ln + "d' \"" + file + "\"";
+        else
+            a.command = "rm -f \"" + file + "\"";
+    } else if (rid == "LNX.PERSIST.PRELOAD.001") {
+        a.command = "cp /etc/ld.so.preload /tmp/ld.so.preload.bak 2>/dev/null; : > /etc/ld.so.preload\n# 对应 .so 先拷走再删";
+    } else if (rid == "LNX.PERSIST.RCLOCAL.001") {
+        std::string ln = line_of_ref(obj);
+        a.command = "sed -i '" + (ln.empty() ? "1d" : ln + "d") + "' /etc/rc.local";
+    } else if (rid == "LNX.LDSO.INJECT.001") {
+        a.command = "rm -f \"" + path_of_ref(obj) + "\"";
+    } else if (rid == "LNX.TRACE.HISTORY.001") {
+        a.command = "sed -n '" + (line_of_ref(obj).empty() ? "1" : line_of_ref(obj)) +
+                    "p' \"" + path_of_ref(obj) + "\"\n# 这是线索，顺着 IP/文件追，不要清空 history";
+        a.contest_note.clear();
+    } else if (rid == "LNX.PERSIST.XINETD.001") {
+        a.command = "rm -f \"" + path_of_ref(obj) + "\"";
+    } else if (rid == "LNX.FILES.DOUBLEEXT.001" || rid == "LNX.TOOLS.ARTIFACT.001" ||
+               rid == "LNX.TOOLS.FRPCFG.001" || rid == "LNX.PERSIST.SSHLOG.001" ||
+               rid == "LNX.PERSIST.XDG.001" || rid == "LNX.PERSIST.PYHOOK.001" ||
+               rid == "LNX.PERSIST.UDEV.001") {
+        a.command = "rm -f \"" + path_of_ref(obj) + "\"";
+    } else if (rid == "LNX.WEB.SHELL.001" ||
+               rid == "MID.PHP.PHPINFO.001" || rid == "MID.WEB.CREDS.001" ||
+               rid == "MID.WEB.GITLEAK.001" || rid == "MID.WEB.BACKUP.001") {
+        a.command = "mv \"" + obj + "\" \"" + obj + ".quarantine\"";
+    } else if (rid == "LNX.WEB.BLACKLINK.001" || rid == "WIN.WEB.BLACKLINK.001") {
+        std::string base = after_last(obj, '/');
+        if (base.find('\\') != std::string::npos) base = after_last(obj, '\\');
+        std::string blow = to_lower(base);
+        if (blow == "index.php" || blow == "index.html" || blow == "index.htm" ||
+            blow == "index.asp" || blow == "index.aspx" || blow == "default.asp" ||
+            blow == "default.aspx")
+            a.command = "打开 \"" + obj + "\" 把隐藏的 <a>/<iframe> 黑链删掉，首页不要整份移走";
+        else if (is_win_path(obj) || starts_with(rid, "WIN."))
+            a.command = "del /f \"" + obj + "\"";
+        else
+            a.command = "mv \"" + obj + "\" \"" + obj + ".quarantine\"";
+    } else if (rid == "MID.REDIS.NOPASS.001") {
+        a.command = "sed -i 's/^bind .*/bind 127.0.0.1/' \"" + obj + "\"\necho 'requirepass 换成强口令' >> \"" + obj + "\"";
+    } else if (rid == "MID.REDIS.BINDALL.001") {
+        a.command = "sed -i 's/^bind .*/bind 127.0.0.1/' \"" + obj + "\"";
+    } else if (rid == "MID.REDIS.PROTMODE.001") {
+        a.command = "sed -i 's/^protected-mode.*/protected-mode yes/' \"" + path_of_ref(obj) + "\"";
+    } else if (rid == "LNX.ACC.SHADOWPERM.001") {
+        a.command = "chmod 000 /etc/shadow";
+    } else if (rid == "LNX.PERSIST.INITD.001") {
+        std::string initf = path_of_ref(obj);
+        a.command = "rm -f \"" + initf + "\"\nchkconfig --del $(basename \"" + initf + "\") 2>/dev/null || true";
+    } else if (rid == "LNX.PERSIST.SYSTEMD.001" || rid == "LNX.TIMER.FACT.001") {
+        std::string unit = path_of_ref(obj);
+        a.command = "systemctl disable --now $(basename \"" + unit + "\") 2>/dev/null\nmv \"" + unit +
+                    "\" \"" + unit + ".quarantine\"\nsystemctl daemon-reload";
+    } else if (rid == "LNX.WEB.LOGPOST.001" || rid == "LNX.WEB.LOGATTACK.001" ||
+               rid == "LNX.LOG.AUTHFAIL.001" || rid == "WIN.WEB.LOGPOST.001" ||
+               rid == "WIN.WEB.LOGATTACK.001") {
+        a.command = "把 Top IP 和时间写进报告，不要清日志";
+        a.contest_note.clear();
     }
 
     if (a.command.empty()) a.command = from_plan(f);
 
+    if (a.command.empty() && starts_with(rid, "LNX.")) {
+        if (rid.find("CAPS") != std::string::npos) {
+            a.command = "getcap \"" + obj + "\"\n# ping/mtr/newuidmap 是发行版自带，不用动；确认异常再 setcap -r \"" + obj + "\"";
+        } else if (rid.find("SUID") != std::string::npos) {
+            a.command = "ls -l \"" + obj + "\"\nchmod u-s \"" + obj + "\"";
+        } else if (rid.find("TMPDIR") != std::string::npos || rid.find("PROC.DELETED") != std::string::npos ||
+                   rid.find("NAMEMISMATCH") != std::string::npos || rid.find("PROC.MINER") != std::string::npos) {
+            std::string pid = after_tok(obj, "PID ");
+            if (pid.empty()) pid = "<pid>";
+            a.command = "ls -l /proc/" + pid + "/exe\nkill -STOP " + pid + "\n# 确认后 kill " + pid;
+        } else if (rid.find("HOSTS") != std::string::npos) {
+            std::string line = line_of_ref(obj);
+            a.command = "sed -i '" + (line.empty() ? "Nd" : line + "d") + "' /etc/hosts";
+        } else if (rid.find("CMDSIZE") != std::string::npos) {
+            a.command = "rpm -V coreutils 2>/dev/null || dpkg -V coreutils\n# 先拷走再 yum reinstall / apt install --reinstall";
+        } else if (rid.find("XINETD") != std::string::npos) {
+            a.command = "rm -f \"" + path_of_ref(obj) + "\"";
+        } else if (rid.find("PAM") != std::string::npos) {
+            std::string file = path_of_ref(obj);
+            std::string ln = line_of_ref(obj);
+            if (!ln.empty())
+                a.command = "sed -i '" + ln + "d' \"" + file + "\"";
+            else
+                a.command = "rm -f \"" + file + "\"";
+        } else if (rid.find("BASHFUNC") != std::string::npos || rid.find("PROFILE") != std::string::npos) {
+            std::string file = path_of_ref(obj);
+            std::string ln = line_of_ref(obj);
+            if (!ln.empty())
+                a.command = "sed -i '" + ln + "d' \"" + file + "\"";
+            else
+                a.command = "打开 \"" + file + "\" 把 alias/函数那几行删掉";
+        }
+    }
+
     if (a.command.empty()) {
         if (!obj.empty())
-            a.command = "按手册人工处置（对象: " + obj + "）";
+            a.command = "打开 " + obj + " 看原文，确认后再动手。";
         else
-            a.command = "按手册人工处置";
+            a.command = "打开这条的位置看原文，确认后再动手。";
     }
     return a;
 }
@@ -390,6 +676,35 @@ static std::string filled_advice_text(const Finding& f) {
     if (!adv) return {};
     std::string body = adv->text;
     std::string acct = account_of(f);
+    bool linux = starts_with(f.rule_id, "LNX.") || starts_with(f.rule_id, "MID.");
+    bool win = starts_with(f.rule_id, "WIN.");
+    if (linux || win) {
+        std::string filtered;
+        bool skip = false;
+        auto strip = [](const std::string& line, const char* pfx) {
+            return trim(line.substr(std::strlen(pfx)));
+        };
+        for (const auto& line : split_lines(body)) {
+            std::string shown = line;
+            if (starts_with(line, "Windows：")) {
+                skip = linux;
+                shown = strip(line, "Windows：");
+            } else if (starts_with(line, "Windows:")) {
+                skip = linux;
+                shown = strip(line, "Windows:");
+            } else if (starts_with(line, "Linux：")) {
+                skip = win;
+                shown = strip(line, "Linux：");
+            } else if (starts_with(line, "Linux:")) {
+                skip = win;
+                shown = strip(line, "Linux:");
+            }
+            if (skip) continue;
+            if (!filtered.empty()) filtered += "\n";
+            filtered += shown;
+        }
+        if (!filtered.empty()) body = filtered;
+    }
     std::string task = after_tok(f.object_ref, "Task");
     std::string svc = after_tok(f.object_ref, "Services\\");
     if (svc.empty() && f.rule_id.find("SVC") != std::string::npos)
@@ -400,6 +715,11 @@ static std::string filled_advice_text(const Finding& f) {
     if (!acct.empty()) {
         replace_all(body, "<账户名>", acct);
         replace_all(body, "<用户名>", acct);
+    } else {
+        replace_all(body, "net user <账户名> 看组。", "用 net user 看组。");
+        replace_all(body, "id <用户名>。", "用 id 看 UID。");
+        replace_all(body, "<账户名>", "该账户");
+        replace_all(body, "<用户名>", "该用户");
     }
     if (!task.empty()) replace_all(body, "<任务路径>", task);
     if (!svc.empty()) replace_all(body, "<服务名>", svc);
@@ -413,7 +733,7 @@ static std::string filled_advice_text(const Finding& f) {
 std::string instantiate_advice_body(const Finding& f) {
     std::string b = filled_advice_text(f);
     if (b.empty())
-        return "（该发现未挂接建议：按证据人工复核；本工具不执行任何修改。）";
+        return "打开这条的位置看原文，确认后再动手。";
     return b;
 }
 
@@ -422,8 +742,6 @@ std::string instantiate_advice(const Finding& f) {
     std::string out;
     if (!da.command.empty())
         out += "【一条命令】" + da.command + "\n";
-    if (!da.contest_note.empty())
-        out += "【" + da.contest_note + "】\n";
     out += instantiate_advice_body(f);
     return out;
 }
@@ -431,14 +749,13 @@ std::string instantiate_advice(const Finding& f) {
 void write_checklist(FILE* fp, const std::vector<Finding>& fds, int limit) {
     if (!fp) return;
     KpiCounts k = count_kpi(fds);
-    std::fprintf(fp, "[处置清单] 立刻清 %d  再加固 %d  溯源 %d  Web %d  隐藏清单 %d  合计 %d\n",
-                 k.clear, k.harden, k.trace, k.web, k.inventory, k.total);
+    std::fprintf(fp, "[处置清单] 先清 %d  Web %d  溯源 %d  加固 %d  清单 %d  合计 %d\n",
+                 k.clear, k.web, k.trace, k.harden, k.inventory, k.total);
     auto idx = sorted_finding_indices(fds);
     int shown = 0, n = 0;
     for (auto i : idx) {
         const Finding& f = fds[i];
         Triage t = triage_of(f);
-        if (!t.default_visible) continue;
         ++n;
         if (shown >= limit) continue;
         DisplayAction da = display_action(f);

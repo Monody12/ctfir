@@ -3,6 +3,14 @@
 状态：NOT_TESTED / BUILT_NOT_RUN / PASSED / FAILED / DEFERRED / NOT_IMPLEMENTED / AUTOMATED_SUBSTITUTE
 规则：未测格不写 PASSED；无基线不下完整性结论；每格有证据指针（TEST_RESULTS.md #编号）。无法提供真实 OS/内核时用 AUTOMATED_SUBSTITUTE（写清技术原因与替代），不再空标 manual。
 
+## v0.8.4 发布门禁（2026-11-14，TEST_RESULTS #44）
+
+- 工具 **0.8.4** / 规则包 **7.2.2** / 检测点 **191**。新增 XINETD/INITD 已纳入高频断言；下方旧版本数字为历史证据，不是本轮结果。
+- box Alpine musl 首轮单测 102/102；补 Dirty Pipe stable 补丁边界、ld.so 目录前缀边界后 104/104。动作命令注入防护随后增加回归，最终结果见 #44 与本提交 CI（未执行不写 PASS）。
+- box Linux alpine:3.20 / centos:7 / debian:8 / ubuntu:16.04 四套基础夹具各 **43/43**；hidepid PASS；CentOS 高频 **59/59**，容器 EXIT trap 自动销毁。最终源码在 CI 再跑相同门禁。
+- Windows 只使用 GitHub-hosted 可销毁 runner：单测、基础 fixture_win（历史 29 项，数字以当次日志为准）、独立高频 16 项及 finally 精确还原（不宣称重跑过 Win7 33 项）。
+- 真实 Server 2008 R2 与 CentOS 3.10 内核仍未实测；Windows 新测试宿主为 Server 2022 GHA，不冒充 Win7/域控真机。
+
 ## v0.7.0 展示层（2026-11-12，详见 TEST_RESULTS #41）
 
 - 检测点仍 **142**，无新规则 ID。Startup 文件夹 `.vbs/.bat/.js/.exe` 复用 `WIN.AUTORUN.SUSPECT.001`。微软预装 Active Setup CLSID 检测仍写入 findings，默认进「清单/事实」。

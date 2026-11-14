@@ -1,6 +1,7 @@
 // Linux v0.5-R6 遗漏补齐：进程从 /tmp//dev/shm 运行、XDG Autostart、
 // Python startup hooks、bashrc 函数后门、Udev Rules、MySQL socket 弱口令
 #include "lnx_common.hpp"
+#include "core/lnx_heuristics.hpp"
 
 #include <cstring>
 #include <set>
@@ -20,6 +21,9 @@ void mod_tmp_proc(ModuleCtx& ctx) {
         if (n <= 0) continue;
         std::string exe(buf, static_cast<size_t>(n));
         std::string low = to_lower(exe);
+        size_t sl = exe.find_last_of('/');
+        std::string exe_base = sl == std::string::npos ? exe : exe.substr(sl + 1);
+        if (exe_base == "ctfir" || exe_base == "ctfir_tests") continue;
         // exe 路径在临时/可写目录
         if (low.find("/tmp/") != std::string::npos || low.find("/dev/shm/") != std::string::npos ||
             low.find("/var/tmp/") != std::string::npos) {
@@ -137,7 +141,9 @@ void mod_bashfunc(ModuleCtx& ctx) {
             }
         });
     }
+    std::set<std::string> seen_bf;
     for (const auto& f : files) {
+        if (!seen_bf.insert(f).second) continue;
         ReadResult r = read_source(ctx, f, false);
         if (!r.ok) continue;
         for_each_line(r.content, [&](int no, const std::string& line) {
@@ -248,7 +254,7 @@ void mod_ransom(ModuleCtx& ctx) {
                 f.rationale = std::string("勒索软件痕迹（") + (is_note ? "勒索信" : "加密扩展名") + "）: " +
                               p + "——需人工核实内容；已知备份文件误报可能";
                 f.object_ref = p;
-                f.advice_id = "ADVICE.HASH.BASELINE.001";
+                f.advice_id = "ADVICE.RANSOM.REVIEW.001";
                 ctx.add_finding(f);
             }
         }
@@ -266,7 +272,7 @@ void mod_ransom(ModuleCtx& ctx) {
             f.rationale = "疑似加密脚本（openssl enc/gpg --batch/shred）: " + p.substr(0, 160) +
                           "——勒索软件加密器常见特征";
             f.object_ref = p;
-            f.advice_id = "ADVICE.MINER.REVIEW.001";
+            f.advice_id = "ADVICE.RANSOM.REVIEW.001";
             ctx.add_finding(f);
         }
     }
@@ -306,7 +312,7 @@ void mod_tools(ModuleCtx& ctx) {
                         f.rationale = "疑似攻击工具遗留文件: " + p +
                                       "（内网扫描/隧道工具，攻击者常用，需人工核实）";
                         f.object_ref = p;
-                        f.advice_id = "ADVICE.MINER.REVIEW.001";
+                        f.advice_id = "ADVICE.TOOLS.REVIEW.001";
                         ctx.add_finding(f);
                     }
                     break;
@@ -327,7 +333,7 @@ void mod_tools(ModuleCtx& ctx) {
                                   "（[common]/server_addr——内网穿透回连配置，攻击者痕迹）";
                     f.object_ref = p;
                     f.evidence_paths = {p};
-                    f.advice_id = "ADVICE.MINER.REVIEW.001";
+                    f.advice_id = "ADVICE.TOOLS.REVIEW.001";
                     ctx.add_finding(f);
                 }
             }
@@ -354,7 +360,7 @@ void mod_sshlog(ModuleCtx& ctx) {
                       "——键盘记录/凭据窃取后门产物，按文件时间戳回溯攻击窗口";
         f.object_ref = p;
         f.evidence_paths = {p};
-        f.advice_id = "ADVICE.ACC.REVIEW.001";
+        f.advice_id = "ADVICE.TOOLS.REVIEW.001";
         ctx.add_finding(f);
     };
     for (const char* p : {"/tmp/.sshlog", "/var/tmp/.sshlog", "/dev/shm/.sshlog",
@@ -374,6 +380,43 @@ void mod_sshlog(ModuleCtx& ctx) {
     ctx.set_status(ModuleStatus::PASS);
 }
 
+void mod_xinetd(ModuleCtx& ctx) {
+    int hits = 0;
+    for (const auto& p : list_dir("/etc/xinetd.d", 200)) {
+        ReadResult r = read_source(ctx, p, false);
+        if (!r.ok) continue;
+        for_each_line(r.content, [&](int no, const std::string& line) {
+            if (!xinetd_line_is_backdoor(line)) return;
+            Finding f;
+            f.rule_id = "LNX.PERSIST.XINETD.001";
+            f.severity = "high";
+            f.confidence = "medium";
+            f.rationale = "xinetd 服务指向临时目录或反弹 shell: " + trim(line).substr(0, 160);
+            f.object_ref = p + ":" + std::to_string(no);
+            f.advice_id = "ADVICE.CRON.REVIEW.001";
+            ctx.add_finding(f);
+            ++hits;
+        });
+    }
+    ReadResult inetd = read_source(ctx, "/etc/inetd.conf", false);
+    if (inetd.ok) {
+        for_each_line(inetd.content, [&](int no, const std::string& line) {
+            if (!xinetd_line_is_backdoor(line)) return;
+            Finding f;
+            f.rule_id = "LNX.PERSIST.XINETD.001";
+            f.severity = "high";
+            f.confidence = "medium";
+            f.rationale = "inetd.conf 含可疑服务: " + trim(line).substr(0, 160);
+            f.object_ref = std::string("/etc/inetd.conf:") + std::to_string(no);
+            f.advice_id = "ADVICE.CRON.REVIEW.001";
+            ctx.add_finding(f);
+            ++hits;
+        });
+    }
+    if (hits == 0) ctx.note("未发现 xinetd/inetd 后门行");
+    ctx.set_status(ModuleStatus::PASS);
+}
+
 } // namespace
 
 void register_mods_h(std::vector<Session::ModuleDef>& mods) {
@@ -386,6 +429,7 @@ void register_mods_h(std::vector<Session::ModuleDef>& mods) {
     mods.push_back({"LNX.RANSOM", "1.0.0", "linux", [](ModuleCtx& c) { mod_ransom(c); }});
     mods.push_back({"LNX.TOOLS", "1.0.0", "linux", [](ModuleCtx& c) { mod_tools(c); }});
     mods.push_back({"LNX.SSHLOG", "1.0.0", "linux", [](ModuleCtx& c) { mod_sshlog(c); }});
+    mods.push_back({"LNX.PERSIST.XINETD", "1.0.0", "linux", [](ModuleCtx& c) { mod_xinetd(c); }});
 }
 
 } // namespace ctfir::lnx

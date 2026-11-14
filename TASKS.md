@@ -62,5 +62,7 @@
 | 2026-11-09 | A7C9 夹具(外部AI部署, 仅只读断言未动) | 八项对接 | 保留待用户 Cleanup 决定 |
 | 2026-11-12 | JW2026-WIN7-01 练习套（用户 ctfir-marker$、Guest→Admins、Run/任务/服务/IFEO/登录脚本、hosts 10.66.0.88、portproxy 13389、Temp/桌面文件+ADS、共享、EnableLUA=0、LimitBlankPasswordUse=0） | 经纬杯安全防护赛 Win7 主机题 | **待练题，勿清**；还原用 `C:\ctfir-test\jw2026_win7_01_cleanup.cmd` |
 | 2026-11-13 | AD-SERVER-01（SYSVOL GPP/GptTmpl、ntds 副本/IFM、sam.save、lsass.dmp、DSRM/LDAP/WDigest 等注册表） | v0.8 Server/AD analog | **已清理**；JW2026 未动；Spooler 仍 RUNNING；Netlogon DisablePasswordChange=1 / SealSecureChannel=0 为实验室原值 |
+| 2026-11-13 | JW2026-WIN7-01 + exam-hf extras（phpstudy/inetpub webshell、60 POST、fscan/frpc、PS 历史、AppInit、WDigest、LATFP、NTLMv1、向日葵目录、勒索信） | 经纬杯高频考点实扫 | **待练题，勿清**；与 JW2026 共存；还原 extras 用 `tests/practice/exam-hf/win_cleanup.cmd`（不动 JW2026/sethc/Administrator/sshd） |
+| 2026-11-13 | centos-ir-lab `5dfc0394ada1` exam-hf 全套（UID0/PAM/xinetd/init.d/preload/webshell/redis/mysql/进程伪装等） | Linux 高频考点实扫 | **保留待练**；假 `/usr/bin/ls` 为 CMDSIZE 真命中；还原用 `tests/practice/exam-hf/linux_cleanup.sh` |
 
 备注：M0 在 Win7 VM 仅建立 `C:\ctfir-test\` 部署目录并运行只读 PoC（未建夹具）。

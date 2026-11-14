@@ -1,5 +1,6 @@
 // Linux v0.5-R10 遗漏补齐：系统命令替换 / SSH Port / 最近修改文件 / 进程名不匹配
 #include "lnx_common.hpp"
+#include "core/lnx_heuristics.hpp"
 #include "platform/modules_registry.hpp"
 
 #include <cstring>
@@ -138,6 +139,8 @@ void mod_recent(ModuleCtx& ctx) {
             if (lstat(p.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) continue;
             time_t age = now - st.st_mtime;
             if (age > 7 * 86400) continue; // 7 天内
+            std::string base = p.substr(p.find_last_of('/') + 1);
+            if (base == "resolv.conf" || base == "hostname" || p == "/etc/hosts") continue;
             std::string low = to_lower(p);
             bool is_exec = (st.st_mode & S_IXUSR) || ends_with(low, ".sh") ||
                            ends_with(low, ".py") || ends_with(low, ".php") ||
@@ -153,7 +156,7 @@ void mod_recent(ModuleCtx& ctx) {
             f.confidence = "low";
             f.rationale = "最近 7 天内新增/修改的可执行/配置文件: " + p + "（mtime " + tbuf + "）——新投毒线索";
             f.object_ref = p;
-            f.advice_id = "ADVICE.HASH.BASELINE.001";
+            f.advice_id = "ADVICE.FILE.REVIEW.001";
             ctx.add_finding(f);
         }
     }
@@ -183,11 +186,7 @@ void mod_procmismatch(ModuleCtx& ctx) {
         size_t eslash = exe.find_last_of('/');
         std::string exe_name = eslash == std::string::npos ? exe : exe.substr(eslash + 1);
         // 比较（允许常见差异：bash vs -bash, [kworker] 等）
-        if (claimed != exe_name && claimed != "-" + exe_name &&
-            !claimed.empty() && !exe_name.empty()) {
-            // 排除正常场景（python3 脚本名不同、busybox 多调用等）
-            if (exe_name.find("python") == 0 || exe_name.find("perl") == 0 ||
-                exe_name.find("busybox") == 0 || exe_name.find("java") == 0) continue;
+        if (!proc_claimed_matches_exe(claimed, exe_name)) {
             Finding f;
             f.rule_id = "LNX.PROC.NAMEMISMATCH.001";
             f.severity = "medium";

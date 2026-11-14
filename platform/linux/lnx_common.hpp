@@ -33,6 +33,8 @@ inline const Tok kSuspicious[] = {
     {"perl -e", "内联脚本执行特征"},
     {"nc -e", "反弹 shell 特征"},
     {"/bin/bash -i", "交互反弹 shell 特征"},
+    {"/dev/tcp", "反弹 shell 特征"},
+    {"bash -i", "交互反弹 shell 特征"},
     {"mkfifo", "管道后门特征"},
     {"chmod 777", "全开放权限修改"},
     {"stratum+tcp", "矿池协议特征"},

@@ -2,6 +2,7 @@
 // 补丁留证 / 日志保留 / 高危端口监听。依据等保基线检查项 + 决赛指南"安全基线核查"考点。
 #include "win_common.hpp"
 #include "core/log_attack.hpp"
+#include "core/triage.hpp"
 #include <cstdlib>
 
 #include <winsock2.h>
@@ -590,6 +591,8 @@ void mod_base_persist(ModuleCtx& ctx) {
                 std::string cmd;
                 reg_get(HKEY_LOCAL_MACHINE, as + L"\\" + clsid, L"StubPath", false, cmd);
                 if (cmd.empty()) continue;
+                std::string clsid_u = wide_to_utf8(clsid);
+                if (is_known_ms_activesetup(clsid_u)) continue;
                 if (is_writable_path(cmd) || !is_expected_path(cmd)) {
                     Finding f;
                     f.rule_id = "WIN.BASE.ACTIVESETUP.001";
@@ -873,9 +876,9 @@ void mod_base_persist(ModuleCtx& ctx) {
             f.severity = "low";
             f.confidence = "high";
             f.rationale = std::string("检测到远控软件: ") + rc.name + "（" + rc.dir +
-                          "）——" + rc.loghint + "；向日葵曾爆 PowerShell 路径遍历 RCE（CNVD-2022-03661 类）";
+                          "）——" + rc.loghint;
             f.object_ref = rc.dir;
-            f.advice_id = "ADVICE.HARDEN.001";
+            f.advice_id = "ADVICE.RMT.REVIEW.001";
             ctx.add_finding(f);
             // 向日葵日志快速特征（RCE 攻击记录：日志含 WindowsPowerShell 路径遍历）
             if (std::string(rc.name).find("SunLogin") != std::string::npos) {
@@ -1081,7 +1084,7 @@ void mod_mysql_win(ModuleCtx& ctx) {
                     f.rationale = std::string("MySQL ") + label + " 中发现 " + why + ": " +
                                   line.substr(0, 180) + "（写马/UDF/读文件痕迹——取证金矿）";
                     f.object_ref = gl;
-                    f.advice_id = "ADVICE.WEBSHELL.REVIEW.001";
+                    f.advice_id = "ADVICE.MID.REVIEW.001";
                     ctx.add_finding(f);
                 }
             });

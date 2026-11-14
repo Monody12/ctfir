@@ -7,6 +7,7 @@ add_executable(ctfir_tests
   test_triage.cpp
   test_compat.cpp
   test_ad_detect.cpp
+  test_lnx_heuristics.cpp
 )
 target_link_libraries(ctfir_tests PRIVATE ctfir_core)
 if(WIN32)

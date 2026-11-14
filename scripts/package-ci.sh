@@ -34,11 +34,12 @@ cp packaging/README-先读我.md packaging/COMPATIBILITY.md packaging/KNOWN_LIMI
    THIRD_PARTY_NOTICES.md LICENSE "$OUT/"
 cp licenses/nlohmann-json-MIT.txt "$OUT/licenses/"
 
-STAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-cat > "$OUT/BUILDINFO.json" <<JSON
-{"tool":"ctfir","version":"$VER","built_utc":"$STAMP","schema_version":1,
- "platform":"$PLATFORM","builder":"GitHub Actions (toolchain 同 scripts/build-*.sh)","source":"github.com/Monody12/ctfir"}
-JSON
+# Run full fixture gates on both normal and release CI, not just unit tests.
+if [ "${GITHUB_ACTIONS:-}" = true ]; then
+  bash scripts/release-checks.sh "$PLATFORM" "${BINS[0]}"
+fi
+if command -v python3 >/dev/null 2>&1; then PYTHON=python3; else PYTHON=python; fi
+"$PYTHON" scripts/buildinfo.py --out "$OUT" --platform "$PLATFORM" --artifact-version "$VER"
 cat > "$OUT/SBOM.json" <<'JSON'
 {"components":[
  {"name":"ctfir original code","license":"MIT","origin":"github.com/Monody12/ctfir"},

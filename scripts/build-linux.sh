@@ -1,21 +1,22 @@
 #!/usr/bin/env bash
-# ctfir Linux 构建（Alpine 容器静态 musl；镜像 ctfir-builder:alpine3.20 固定）
-# 单次容器内完成：构建 → 单测 → 产物拷回（容器 --rm，跨 run 不保状态）
+# Offline musl build; dependencies are provisioned in the test/build container only.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-docker build -f docker/builder.Dockerfile -t ctfir-builder:alpine3.20 . >/dev/null
-mkdir -p /d/ctfir-build/linux
-MSYS_NO_PATHCONV=1 docker run --rm \
-  -v "C:/Users/Administrator/Documents/zcode-projects/ctfir:/src:ro" \
-  -v "D:/ctfir-build/linux:/out" \
-  ctfir-builder:alpine3.20 sh -c '
+SRC="$(pwd)"
+if command -v cygpath >/dev/null 2>&1; then
+  SRC=$(cygpath -m "$SRC")
+  OUT=${CTFIR_BUILD_OUT:-D:/ctfir-build/linux}
+else
+  OUT=${CTFIR_BUILD_OUT:-$PWD/out/linux}
+fi
+mkdir -p "$OUT"
+docker build ${CTFIR_DOCKER_BUILD_ARGS:-} -f docker/builder.Dockerfile -t ctfir-builder:alpine3.20 .
+MSYS_NO_PATHCONV=1 docker run --rm --network none -v "$SRC:/src:ro" -v "$OUT:/out" \
+  ctfir-builder:alpine3.20 sh -ec '
     cmake -S /src -B /tmp/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_CXX_FLAGS="-static" -DCMAKE_EXE_LINKER_FLAGS="-static" > /tmp/cfg.log &&
-    cmake --build /tmp/build 2>&1 | tail -3 &&
-    echo ==LINUX_BUILD_OK== &&
-    /tmp/build/ctfir_tests &&
-    echo ==LINUX_TESTS_OK== &&
-    (ldd /tmp/build/ctfir 2>&1 | head -1 || true) &&
-    cp /tmp/build/ctfir /tmp/build/ctfir_tests /out/ &&
+      -DCMAKE_CXX_FLAGS="-static" -DCMAKE_EXE_LINKER_FLAGS="-static"
+    cmake --build /tmp/build -j 2
+    /tmp/build/ctfir_tests
+    cp /tmp/build/ctfir /tmp/build/ctfir_tests /out/
     sha256sum /out/ctfir /out/ctfir_tests
   '

@@ -1,10 +1,12 @@
 // Linux 痕迹模块族（v0.3 Phase2）：LNX.WEB / LNX.LOGINS(lastlog-wtmp) / ld.so.conf.d 注入
 #include "lnx_common.hpp"
 #include "core/log_attack.hpp"
+#include "core/lnx_heuristics.hpp"
 
 #include <cstring>
 #include <ctime>
 #include <map>
+#include <set>
 
 namespace ctfir::lnx {
 
@@ -31,13 +33,14 @@ static bool webshell_hit(const std::string& c, bool& strong) {
            (callfunc && exec_call && req_input) || (b64_file && exec_call);
 }
 
-static void scan_web_dir(ModuleCtx& ctx, const std::string& dir, int depth, int& files, int& hits) {
+static void scan_web_dir(ModuleCtx& ctx, const std::string& dir, int depth, int& files, int& hits,
+                         std::set<std::string>& seen_files) {
     if (depth > 4 || files > 800 || ctx.expired()) return;
     for (const auto& p : list_dir(dir, 400)) {
         struct stat st{};
         if (lstat(p.c_str(), &st) != 0) continue;
         if (S_ISDIR(st.st_mode)) {
-            scan_web_dir(ctx, p, depth + 1, files, hits);
+            scan_web_dir(ctx, p, depth + 1, files, hits, seen_files);
             if (files > 800 || ctx.expired()) return;
             continue;
         }
@@ -45,6 +48,7 @@ static void scan_web_dir(ModuleCtx& ctx, const std::string& dir, int depth, int&
         if (!(ends_with(low, ".php") || ends_with(low, ".phtml") || ends_with(low, ".jsp") ||
               ends_with(low, ".jspx") || ends_with(low, ".asp") || ends_with(low, ".aspx")))
             continue;
+        if (!seen_files.insert(p).second) continue;
         if (++files > 800) return;
         ReadResult r = read_text_file(p, 512 * 1024);
         if (!r.ok) continue;
@@ -95,6 +99,7 @@ void mod_web(ModuleCtx& ctx) {
         roots.push_back(d);
     // 去重扫描
     std::set<std::string> seen;
+    std::set<std::string> seen_files;
     std::string summary;
     int tot_files = 0, tot_hits = 0;
     for (const auto& root : roots) {
@@ -103,7 +108,7 @@ void mod_web(ModuleCtx& ctx) {
         if (lstat(root.c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) continue;
         ctx.planned_source(root);
         int files = 0, hits = 0;
-        scan_web_dir(ctx, root, 0, files, hits);
+        scan_web_dir(ctx, root, 0, files, hits, seen_files);
         tot_files += files;
         tot_hits += hits;
         summary += root + " (script_files=" + std::to_string(files) + " hits=" + std::to_string(hits) + ")\n";
@@ -127,7 +132,7 @@ void mod_web(ModuleCtx& ctx) {
                 for (const auto& sm : s.samples) le.payload += "  " + sm + "\n";
             }
             std::string ev_id = ctx.add_evidence(le);
-            if (s.posts >= 50) {
+            if (s.posts >= 20) {
                 Finding f;
                 f.rule_id = "LNX.WEB.LOGPOST.001";
                 f.severity = "low";
@@ -289,8 +294,7 @@ void mod_ldso(ModuleCtx& ctx) {
         for_each_line(r.content, [&](int no, const std::string& line) {
             std::string t = trim(line);
             if (t.empty() || t[0] == '#') return;
-            if (starts_with(t, "/usr/lib") || starts_with(t, "/lib") ||
-                t == "/usr/local/lib") return;
+            if (!ldso_path_is_unusual(t)) return;
             Finding f;
             f.rule_id = "LNX.LDSO.INJECT.001";
             f.severity = "medium";

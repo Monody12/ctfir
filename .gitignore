@@ -13,3 +13,8 @@ ci-win.zip
 rel.json
 apps/win-gui/app.manifest
 apps/win-gui/app.rc
+
+/out/
+/staging/
+
+__pycache__/

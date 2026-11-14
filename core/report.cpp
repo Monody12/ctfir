@@ -42,7 +42,7 @@ std::string build_json_report(const ScanSession& s,
                                {"never_auto_execute", true},
                                {"text", a.text}});
     }
-    j["disclaimer"] = "只读扫描结果。PASS 仅指声明范围内未命中，不代表系统安全；受限/失败项已如实列出。";
+    j["disclaimer"] = "PASS 只表示这次检查范围内没踩中规则，不等于机器干净。受限或失败的检查已列出。";
     return j.dump(2);
 }
 
@@ -69,8 +69,7 @@ std::string build_html_report(const ScanSession& s,
                               const std::string& generated_beijing) {
     std::map<std::string, const Evidence*> ev_by_id;
     for (const auto& e : ev) ev_by_id[e.evidence_id] = &e;
-    std::map<std::string, const AdvicePair*> adv_by_id;
-    for (const auto& a : advices) adv_by_id[a.finding_id] = &a;
+    (void)advices;
 
     KpiCounts kpi = count_kpi(fds);
     auto order = sorted_finding_indices(fds);
@@ -78,7 +77,7 @@ std::string build_html_report(const ScanSession& s,
     std::ostringstream h;
     h << "<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n<meta charset=\"utf-8\">\n"
       << "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n"
-      << "<title>ctfir 处置工作台</title>\n<style>\n"
+      << "<title>ctfir 扫描结果</title>\n<style>\n"
          "html{box-sizing:border-box}*,*:before,*:after{box-sizing:inherit}\n"
          "body{margin:0;background:#E8EEF4;color:#0F172A;font-family:'Segoe UI','Microsoft YaHei UI','Microsoft YaHei',sans-serif;line-height:1.55}\n"
          "a{color:#2563EB;text-decoration:none}a:hover{text-decoration:underline}\n"
@@ -134,15 +133,13 @@ std::string build_html_report(const ScanSession& s,
          "function copyAttr(btn){copyText(btn.getAttribute('data-cmd')||'');btn.innerHTML='已复制';}\n"
          "function setCat(c){\n"
          "  var el=document.getElementById('cat'); if(el) el.value=c;\n"
-         "  if(c==='inventory'||c==='all'){var v=document.getElementById('view'); if(v) v.value='all';}\n"
          "  applyFilter();\n"
          "}\n"
          "function applyFilter(){\n"
          "  var qel=document.getElementById('q'); var sel=document.getElementById('sev');\n"
-         "  var vel=document.getElementById('view'); var cel=document.getElementById('cat');\n"
+         "  var cel=document.getElementById('cat');\n"
          "  var q=qel?qel.value.toLowerCase():'';\n"
          "  var sev=sel?sel.value:'all';\n"
-         "  var view=vel?vel.value:'personal';\n"
          "  var cat=cel?cel.value:'all';\n"
          "  var cards=document.getElementsByClassName('fcard');\n"
          "  var rows=document.getElementsByClassName('qrow');\n"
@@ -151,11 +148,10 @@ std::string build_html_report(const ScanSession& s,
          "    var el=cards[i];\n"
          "    var okSev=(sev==='all')||(el.getAttribute('data-sev')===sev);\n"
          "    var buck=el.getAttribute('data-bucket');\n"
-         "    var okView=(view==='all')||(buck!=='inventory');\n"
          "    var okCat=(cat==='all')||(buck===cat);\n"
          "    var txt=(el.textContent||'').toLowerCase();\n"
          "    var okQ=(q==='')||(txt.indexOf(q)>=0);\n"
-         "    var show=okSev&&okView&&okCat&&okQ;\n"
+         "    var show=okSev&&okCat&&okQ;\n"
          "    el.style.display=show?'':'none';\n"
          "    if(show) n++;\n"
          "  }\n"
@@ -163,11 +159,10 @@ std::string build_html_report(const ScanSession& s,
          "    var r=rows[j];\n"
          "    var okSev2=(sev==='all')||(r.getAttribute('data-sev')===sev);\n"
          "    var buck2=r.getAttribute('data-bucket');\n"
-         "    var okView2=(view==='all')||(buck2!=='inventory');\n"
          "    var okCat2=(cat==='all')||(buck2===cat);\n"
          "    var txt2=(r.textContent||'').toLowerCase();\n"
          "    var okQ2=(q==='')||(txt2.indexOf(q)>=0);\n"
-         "    r.style.display=(okSev2&&okView2&&okCat2&&okQ2)?'':'none';\n"
+         "    r.style.display=(okSev2&&okCat2&&okQ2)?'':'none';\n"
          "  }\n"
          "  var sh=document.getElementById('shown');\n"
          "  if(sh) sh.innerHTML='显示 '+n+' 条';\n"
@@ -178,8 +173,7 @@ std::string build_html_report(const ScanSession& s,
          "}\n"
          "</script>\n</head>\n<body>\n";
 
-    h << "<div class=\"top\"><h1>ctfir 只读应急 · 处置工作台"
-      << "<span class=\"ro\">只读 · 不执行</span></h1>\n"
+    h << "<div class=\"top\"><h1>ctfir 扫描结果</h1>\n"
       << "<div class=\"meta\">会话 " << escape_html(s.session_id)
       << " ｜ 工具 v" << escape_html(s.tool_version)
       << " ｜ 规则包 v" << escape_html(s.rule_pack_version)
@@ -190,26 +184,22 @@ std::string build_html_report(const ScanSession& s,
       << " → " << escape_html(beijing_time_str(s.ended_utc))
       << " ｜ 状态 <b>" << escape_html(s.overall_status) << "</b></div>\n"
       << "<div class=\"kpi\">"
-      << "<span class=\"chip\" onclick=\"setCat('clear')\">立刻清 <b>" << kpi.clear << "</b></span>"
-      << "<span class=\"chip\" onclick=\"setCat('harden')\">再加固 <b>" << kpi.harden << "</b></span>"
-      << "<span class=\"chip\" onclick=\"setCat('trace')\">溯源 <b>" << kpi.trace << "</b></span>"
-      << "<span class=\"chip\" onclick=\"setCat('web')\">Web/中间件 <b>" << kpi.web << "</b></span>"
-      << "<span class=\"chip inv\" onclick=\"setCat('inventory')\">已隐藏清单 <b>" << kpi.inventory << "</b></span>"
+      << "<span class=\"chip\" onclick=\"setCat('clear')\">1.先清 <b>" << kpi.clear << "</b></span>"
+      << "<span class=\"chip\" onclick=\"setCat('web')\">2.Web <b>" << kpi.web << "</b></span>"
+      << "<span class=\"chip\" onclick=\"setCat('trace')\">3.溯源 <b>" << kpi.trace << "</b></span>"
+      << "<span class=\"chip\" onclick=\"setCat('harden')\">4.加固 <b>" << kpi.harden << "</b></span>"
+      << "<span class=\"chip inv\" onclick=\"setCat('inventory')\">5.清单 <b>" << kpi.inventory << "</b></span>"
       << "<span class=\"chip inv\" onclick=\"setCat('all')\">合计 <b>" << kpi.total << "</b></span>"
       << "</div></div>\n";
 
     h << "<div class=\"wrap\">\n";
-    h << "<div class=\"toolbar\">视图 <select id=\"view\" onchange=\"applyFilter()\">"
-         "<option value=\"personal\">个人防护</option>"
-         "<option value=\"team\">团队综合</option>"
-         "<option value=\"all\">全部</option></select>"
-         "类别 <select id=\"cat\" onchange=\"applyFilter()\">"
-         "<option value=\"all\">全部类别</option>"
-         "<option value=\"clear\">立刻清</option>"
-         "<option value=\"harden\">再加固</option>"
-         "<option value=\"trace\">溯源</option>"
-         "<option value=\"web\">Web/中间件</option>"
-         "<option value=\"inventory\">清单/事实</option></select>"
+    h << "<div class=\"toolbar\">类别 <select id=\"cat\" onchange=\"applyFilter()\">"
+         "<option value=\"all\">全部</option>"
+         "<option value=\"clear\">1.先清</option>"
+         "<option value=\"web\">2.Web</option>"
+         "<option value=\"trace\">3.溯源</option>"
+         "<option value=\"harden\">4.加固</option>"
+         "<option value=\"inventory\">5.清单</option></select>"
          "风险 <select id=\"sev\" onchange=\"applyFilter()\">"
          "<option value=\"all\">全部</option><option value=\"high\">高</option>"
          "<option value=\"medium\">中</option><option value=\"low\">低</option>"
@@ -219,12 +209,10 @@ std::string build_html_report(const ScanSession& s,
          "<button type=\"button\" onclick=\"collapseAll(false)\">展开证据</button>"
          "<span class=\"shown\" id=\"shown\"></span></div>\n";
 
-    h << "<div class=\"warn\">本报告为<b>只读扫描</b>结果：PASS 仅表示声明范围内未命中，"
-         "不代表系统安全。建议仅供复制，工具不修改系统。"
-         "个人赛先清「立刻清」再做「再加固」。团队赛（安全实操 / AI 综合防御）请核 Web、日志、中间件；"
-         "切「全部」找回账户清单等事实项。";
+    h << "<div class=\"warn\">PASS 只表示这次检查范围内没踩中规则，不等于机器干净。"
+         "按顺序做：先清后门 → Web/中间件 → 把溯源写进报告 → 最后才改加固项。";
     if (kpi.web == 0)
-        h << " 当前 Web/中间件 = 0，不代表无站点。";
+        h << " 当前 Web=0，不代表没有站点。";
     h << "</div>\n";
 
     h << "<h2>处置清单</h2>\n"
@@ -237,7 +225,6 @@ std::string build_html_report(const ScanSession& s,
         ++qn;
         h << "<tr class=\"qrow\" data-sev=\"" << escape_html(f.severity)
           << "\" data-bucket=\"" << t.bucket_id << "\""
-          << (t.default_visible ? "" : " style=\"display:none\"")
           << "><td>" << qn << "</td><td>" << escape_html(t.bucket_zh)
           << "</td><td>" << sev_badge(f.severity)
           << "</td><td><a href=\"#f" << order[n] << "\">" << escape_html(da.title)
@@ -259,7 +246,6 @@ std::string build_html_report(const ScanSession& s,
         h << "<div class=\"card fcard sev-" << escape_html(f.severity)
           << "\" id=\"f" << i << "\" data-sev=\"" << escape_html(f.severity)
           << "\" data-bucket=\"" << t.bucket_id << "\""
-          << (t.default_visible ? "" : " style=\"display:none\"")
           << "><p><b>" << escape_html(da.title) << "</b> "
           << sev_badge(f.severity)
           << " <span class=\"badge\" style=\"background:#0F2744\">" << escape_html(t.bucket_zh) << "</span>"
@@ -287,10 +273,9 @@ std::string build_html_report(const ScanSession& s,
         }
         if (!f.limitations.empty())
             h << "<p class=\"meta\">限制：" << escape_html(join(f.limitations, "；")) << "</p>\n";
-        auto ait = adv_by_id.find(f.finding_id);
-        if (ait != adv_by_id.end())
-            h << "<div class=\"advice\"><b>建议（复制参考，工具不执行）：</b>\n"
-              << escape_html(ait->second->text) << "</div>\n";
+        if (!f.advice_id.empty())
+            h << "<div class=\"advice\"><b>怎么处理</b>\n"
+              << escape_html(instantiate_advice_body(f)) << "</div>\n";
         h << "</div>\n";
     }
 
@@ -356,8 +341,8 @@ std::string build_html_report(const ScanSession& s,
     }
     h << "</table></details>\n";
 
-    h << "<p class=\"meta\">ctfir 只读应急助手 · 离线报告（无外部资源；内联脚本仅筛选） · MIT License · "
-         "时间均为北京时间（UTC+8）。</p>\n</div>\n</body></html>\n";
+    h << "<p class=\"meta\">ctfir · MIT License · 时间均为北京时间（UTC+8）。</p>\n"
+         "</div>\n</body></html>\n";
     return h.str();
 }
 

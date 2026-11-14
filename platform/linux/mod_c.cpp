@@ -1,5 +1,6 @@
 // Linux 扩容模块（v0.3 Phase0-C）：capabilities / at 队列 / shadow 权限 / systemd timers 事实化
 #include "lnx_common.hpp"
+#include "core/lnx_heuristics.hpp"
 
 #include <sys/stat.h>
 #include <sys/xattr.h>
@@ -30,7 +31,7 @@ void mod_caps(ModuleCtx& ctx) {
             e.object_identity = "security.capability xattr(" + std::to_string(n) + "B)";
             e.payload = "(capability 元数据留证)";
             ctx.add_evidence(e);
-            if (!allow.count(name)) {
+            if (!allow.count(name) && !cap_name_expected(name)) {
                 Finding f;
                 f.rule_id = "LNX.CAPS.UNEXPECTED.001";
                 f.severity = "low";
@@ -38,7 +39,7 @@ void mod_caps(ModuleCtx& ctx) {
                 f.rationale = "非常见文件具备 capabilities: " + p +
                               "（容器/发行版工具可能合法，需人工核对 cap 集）";
                 f.object_ref = p;
-                f.advice_id = "ADVICE.ACC.REVIEW.001";
+                f.advice_id = "ADVICE.HASH.BASELINE.001";
                 ctx.add_finding(f);
             }
         }
@@ -99,7 +100,7 @@ void mod_shadowperm(ModuleCtx& ctx) {
         f.rationale = "/etc/shadow 其他用户可读（权限 " + std::to_string((st.st_mode & 07777)) +
                       "）——本机所有用户可离线爆破哈希，属高危配置";
         f.object_ref = "/etc/shadow";
-        f.advice_id = "ADVICE.ACC.REVIEW.001";
+        f.advice_id = "ADVICE.HARDEN.001";
         ctx.add_finding(f);
     } else if (group_read) {
         Finding f;
@@ -108,7 +109,7 @@ void mod_shadowperm(ModuleCtx& ctx) {
         f.confidence = "medium";
         f.rationale = "/etc/shadow 组可读（shadow 组惯例可接受，需核实组成员）";
         f.object_ref = "/etc/shadow";
-        f.advice_id = "ADVICE.ACC.REVIEW.001";
+        f.advice_id = "ADVICE.HARDEN.001";
         ctx.add_finding(f);
     }
     ctx.note("shadow 内容绝不读取/保存（红线），仅权限元数据");
@@ -184,15 +185,16 @@ static void files_walk(ModuleCtx& ctx, const std::string& dir, int depth, int& f
                 }
                 if (!has_alpha) prev_real = false;
             }
-            if (looks_exec_name_l(namelow) && !prev_archive && prev_real) {
+            if (looks_exec_name_l(namelow) && !prev_archive && prev_real &&
+                camouflage_doc_ext(prevext)) {
                 ++double_ext;
                 Finding f;
                 f.rule_id = "LNX.FILES.DOUBLEEXT.001";
                 f.severity = "medium";
                 f.confidence = "medium";
-                f.rationale = "疑似双扩展名伪装: " + p + "——伪装线索，需人工查看内容";
+                f.rationale = "疑似双扩展名伪装: " + p + "——先当可执行文件处理，不要当文档打开";
                 f.object_ref = p;
-                f.advice_id = "ADVICE.WEBSHELL.REVIEW.001";
+                f.advice_id = "ADVICE.TOOLS.REVIEW.001";
                 ctx.add_finding(f);
             }
         }
@@ -225,7 +227,9 @@ static void files_walk(ModuleCtx& ctx, const std::string& dir, int depth, int& f
 }
 
 void mod_files_l(ModuleCtx& ctx) {
-    std::vector<std::string> dirs;
+    std::vector<std::string> dirs = {
+        "/tmp", "/var/tmp", "/root", "/var/www", "/opt", "/home"
+    };
     for (const auto& d : ctx.config().extra_dirs) dirs.push_back(d);
     std::map<std::string, std::string> baseline;
     if (!ctx.config().baseline_path.empty()) {
@@ -283,7 +287,6 @@ void mod_files_l(ModuleCtx& ctx) {
     e.payload = "files=" + std::to_string(files) + " double_ext=" + std::to_string(double_ext) +
                 " baseline_total=" + std::to_string(baseline.size());
     ctx.add_evidence(e);
-    if (dirs.empty()) ctx.note("未指定 --dir 附加目录（巡检跳过）");
     ctx.set_status(ModuleStatus::PASS);
 }
 

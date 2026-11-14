@@ -183,6 +183,22 @@ inline bool is_expected_path(const std::string& path_utf8) {
     return false;
 }
 
+// 扫描器自己、VMware 升级包、已单独报过的攻击工具——不要再当 TEMPEXE/RECENT 刷屏
+inline bool is_scanner_self_or_vendor(const std::string& path_utf8, const std::string& namelow) {
+    if (namelow == "ctfir.exe" || namelow == "ctfir-gui.exe" || namelow == "ctfir_tests.exe")
+        return true;
+    if (namelow == "storepwd.exe" || namelow == "upgrader.exe" || namelow == "unattend.cmd")
+        return true;
+    if (namelow == "fscan.exe" || namelow == "frpc.exe" || namelow == "frpc.ini" ||
+        namelow == "nps.exe" || namelow == "chisel.exe" || namelow == "ew.exe")
+        return true;
+    std::string p = to_lower(path_utf8);
+    if (p.find("\\ctfir-v") != std::string::npos) return true;
+    if (p.find("\\ctfir-test") != std::string::npos) return true;
+    if (p.find("\\win-x64\\") != std::string::npos && starts_with(namelow, "ctfir")) return true;
+    return false;
+}
+
 inline std::string sysroot() {
     char buf[MAX_PATH]{};
     GetWindowsDirectoryA(buf, MAX_PATH);

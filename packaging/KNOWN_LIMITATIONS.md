@@ -46,3 +46,10 @@
 32. **凭据副本只报路径**：`sam.save` / `ntds.dit` / `lsass.dmp` 只告警文件存在。不解析哈希、不解密 cpassword、不打开 dump。
 33. **实验机 Netlogon 原值**：Win7 VM 的 `DisablePasswordChange=1`、`SealSecureChannel=0` 是清理后仍在的实验室原配置，不是夹具残留。不要为消告警去改实验机。
 
+
+## v0.8.4 发布边界（2026-11-14）
+
+- 高频回归只在可销毁容器 / GitHub-hosted Windows runner 执行，不重用用户练习环境。此轮 Windows 测试宿主不是 Win7/2008R2/真实域控。
+- Dirty Pipe 版本提示排除 stable 5.10.102 / 5.15.25 / 5.16.12；发行版回补仍需结合供应商补丁核实，版本线索不是漏洞利用证明。
+- 对象含 shell 元字符时不生成可复制动作；请以证据与手册核实，不将工具建议当作自动安全处置。
+- 包内 BUILDINFO 对应本次准确源码 commit/tree、规则包及二进制哈希；源码、旧版 ZIP 或其他版本的 CI artifact 均不能混用。

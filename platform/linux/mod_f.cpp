@@ -30,7 +30,8 @@ static std::vector<ConfLine> parse_conf(const std::string& content) {
 }
 
 static void finding_kv(ModuleCtx& ctx, const char* rule, const char* sev, const std::string& file,
-                       const ConfLine& c, const std::string& msg) {
+                       const ConfLine& c, const std::string& msg,
+                       const char* advice = "ADVICE.HARDEN.001") {
     Finding f;
     f.rule_id = rule;
     f.severity = sev;
@@ -38,7 +39,7 @@ static void finding_kv(ModuleCtx& ctx, const char* rule, const char* sev, const 
     f.rationale = msg + "（" + file + " 第 " + std::to_string(c.no) + " 行: " + c.key +
                   (c.val.empty() ? "" : " = " + c.val) + "）";
     f.object_ref = file + ":" + std::to_string(c.no);
-    f.advice_id = "ADVICE.HARDEN.001";
+    f.advice_id = advice;
     ctx.add_finding(f);
 }
 
@@ -64,7 +65,7 @@ void mod_redis(ModuleCtx& ctx) {
             if (c.key == "bind" && (c.val == "0.0.0.0" || c.val.empty())) bind_all = true;
             if (c.key == "protected-mode" && c.val == "no") {
                 finding_kv(ctx, "MID.REDIS.PROTMODE.001", "high", cf, c,
-                           "Redis protected-mode 已关闭");
+                           "Redis protected-mode 已关闭", "ADVICE.MID.REVIEW.001");
             }
         }
         if (!has_pass) {
@@ -74,18 +75,21 @@ void mod_redis(ModuleCtx& ctx) {
             f.confidence = "medium";
             f.rationale = "Redis 配置未设置 requirepass" +
                           std::string(bind_all ? " 且监听所有网卡" : "") +
-                          "——未授权访问可写 crontab/SSH key 拿壳（CTF 高频链）";
+                          "——未授权访问可写 crontab/SSH key 拿壳";
             f.object_ref = cf;
-            f.advice_id = "ADVICE.HARDEN.001";
+            f.advice_id = "ADVICE.MID.REVIEW.001";
             ctx.add_finding(f);
-        } else if (bind_all) {
+        }
+        if (bind_all) {
             Finding f;
             f.rule_id = "MID.REDIS.BINDALL.001";
             f.severity = "medium";
             f.confidence = "high";
-            f.rationale = "Redis 设置了口令但监听所有网卡——暴露面扩大";
+            f.rationale = std::string(has_pass ? "Redis 有口令但仍监听所有网卡" :
+                                                 "Redis 监听 0.0.0.0") +
+                          "——暴露面扩大";
             f.object_ref = cf;
-            f.advice_id = "ADVICE.HARDEN.001";
+            f.advice_id = "ADVICE.MID.REVIEW.001";
             ctx.add_finding(f);
         }
     }
@@ -155,7 +159,7 @@ void mod_mysql(ModuleCtx& ctx) {
                               "（sys_exec/sys_eval 任意命令执行——UDF 提权后门）";
                 f.object_ref = p;
                 f.evidence_paths = {p};
-                f.advice_id = "ADVICE.MINER.REVIEW.001";
+                f.advice_id = "ADVICE.MID.REVIEW.001";
                 ctx.add_finding(f);
             } else {
                 ctx.note("plugin 目录存在自定义 .so（需人工核实来源）: " + p);
@@ -183,7 +187,7 @@ void mod_mysql(ModuleCtx& ctx) {
                     f.rationale = "MySQL 错误日志中发现反弹 shell 语句: " + line.substr(0, 180) +
                                   "（通过 SQL 写脚本再执行——入侵痕迹）";
                     f.object_ref = el;
-                    f.advice_id = "ADVICE.WEBSHELL.REVIEW.001";
+                    f.advice_id = "ADVICE.MID.REVIEW.001";
                     ctx.add_finding(f);
                 }
             });
@@ -266,7 +270,7 @@ void mod_mysql(ModuleCtx& ctx) {
                         f.rationale = std::string("MySQL ") + label + " 中发现 " + why + ": " +
                                       line.substr(0, 180) + "（写马/UDF/读文件痕迹——取证金矿）";
                         f.object_ref = gl;
-                        f.advice_id = "ADVICE.WEBSHELL.REVIEW.001";
+                        f.advice_id = "ADVICE.MID.REVIEW.001";
                         ctx.add_finding(f);
                     }
                 });

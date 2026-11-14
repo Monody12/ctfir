@@ -189,6 +189,20 @@ RemediationPlan plan_remediation(const Finding& f) {
         return p;
     }
     // ---------- Linux systemd unit ----------
+    if ((rid == "LNX.PERSIST.INITD.001" || rid == "LNX.PERSIST.XINETD.001") &&
+        obj.find_first_of("\"'`$\r\n;&|<>") != std::string::npos) {
+        p.reason = "对象含 shell 特殊字符；拒绝生成处置操作";
+        return p;
+    }
+    if (rid == "LNX.PERSIST.INITD.001") {
+        std::string file = obj.substr(0, obj.rfind(':'));
+        if (file.empty()) file = obj;
+        p.supported = true;
+        p.backups.push_back("cp \"" + file + "\" \"${CTFIR_BACKUP_DIR:-/tmp}/\"");
+        p.native_ops.push_back("quarantine:" + file);
+        p.rollback_note = "从会话 fix-backup/ 移回 /etc/init.d 即恢复";
+        return p;
+    }
     if (rid == "LNX.PERSIST.SYSTEMD.001" || rid == "LNX.TIMER.FACT.001") {
         std::string unit = obj; // 单元文件完整路径
         if (unit.empty()) { p.reason = "无法解析单元文件"; return p; }
@@ -301,7 +315,7 @@ RemediationPlan plan_remediation(const Finding& f) {
         return p;
     }
     // PAM 后门行 → 注释（pam_exec 注入行）
-    if (rid == "LNX.PERSIST.PAM.001") {
+    if (rid == "LNX.PERSIST.PAM.001" || rid == "LNX.PERSIST.XINETD.001") {
         std::string file = obj.substr(0, obj.rfind(':'));
         if (file.empty()) { p.reason = "无法解析文件"; return p; }
         p.supported = true;

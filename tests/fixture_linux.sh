@@ -59,6 +59,9 @@ if [ -f /etc/ssh/sshd_config ]; then cp /etc/ssh/sshd_config /tmp/ctfir-sshd.bak
 echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
 # L16 rc.local
 echo 'curl http://127.0.0.1/ctfir-marker | sh' > /etc/rc.local
+mkdir -p /etc/init.d
+echo 'curl http://127.0.0.1/ctfir-marker | sh' > /etc/init.d/ctfir-marker
+chmod +x /etc/init.d/ctfir-marker
 # L18 ld.so.conf.d 非常规路径
 echo "/tmp/ctfir-marker-lib" > /etc/ld.so.conf.d/ctfir-marker.conf
 # L22 已删除可执行文件仍在运行（busybox 需 exec -a；dash 不支持 -a，直接跑真正的 sleep ELF）
@@ -116,6 +119,7 @@ has_rule MID.MYSQL.BINLOG.001
 has_rule LNX.ACC.SHADOWPERM.001
 has_rule LNX.SSH.CONFIG.001
 has_rule LNX.PERSIST.RCLOCAL.001
+has_rule LNX.PERSIST.INITD.001
 has_rule LNX.LDSO.INJECT.001
 has_rule LNX.PROC.DELETED.001
 has_rule LNX.PROC.MINER.001
@@ -129,11 +133,12 @@ grep -q "mysql-slow-normal" "$OUT/findings.json" && bad "L48 normal SELECT false
 has_text ctfir-marker.local findings.json
 # HTML 报告产物 + 无脚本外链
 [ -f "$OUT/report.html" ] && ok "report.html exists" || bad "report.html missing"
-grep -qi "http://\|https://" "$OUT/report.html" && bad "html has external URL" || ok "html no external URLs"
+grep -qiE 'src=["'\'']https?://|href=["'\'']https?://' "$OUT/report.html" && bad "html has external URL" || ok "html no external URLs"
 
 echo "=== 阶段3：清理并复验 ==="
 rm -f /etc/cron.d/ctfir-marker /etc/profile.d/ctfir-marker.sh \
       /etc/systemd/system/ctfir-marker.service /usr/bin/ctfir-marker-suid \
+      /etc/init.d/ctfir-marker \
       /tmp/.sshlog /www/wwwlogs/ctfir-marker.com.log \
       /var/log/mysql/mysql-slow.log /var/lib/mysql/mysql-bin.000001 /var/log/mysql/mysql-slow-normal.log /etc/rc.local /etc/ld.so.conf.d/ctfir-marker.conf /etc/nginx/nginx.conf /var/log/auth.log
 rmdir /www/wwwlogs /www /var/log/mysql 2>/dev/null || true

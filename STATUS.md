@@ -1,11 +1,12 @@
 # STATUS
 
-- 阶段：**v0.8.0 AD/Server 模拟覆盖**——成员服务器原 WIN.* 规则照常；GPP/NTDS/SYSVOL/凭据防护 + SAM hive/lsass dump。GUI 仍只读，无修复按钮。未打 `v0.8.0` tag（等 CI 绿）。
-- 版本：kToolVersion **0.8.0** / 规则包 **7.0.0** / 检测点 **189**
-- 门禁：TEST_RESULTS **#43**（Win7 42/42 HIT → VERIFY-GONE → cleanup 恢复）
-- 考点对照：个人赛安全防护 + 团队赛主机侧 + Windows Server/AD 文件注册表模拟。活 LDAP 仍 C，见 AD-SERVER-POINTS D 节。
-- 发布产物：Windows `D:\ctfir-build\cmake-build\`；Linux `D:\ctfir-build\linux\`。push `main` 走 `.github/workflows/ci.yml` 上传 Artifact；tag `v*` 发 Release。
-- 最后更新：2026-11-13 01:00（北京时间）
+- 当前版本：**0.8.4** / 规则包 **7.2.2** / 检测点 **191**。
+- 发布准备在 box 进行；Windows 原工作区和 JW2026/exam-hf 待练环境均未修改。
+- 当前真实验证见 TEST_RESULTS **#44**；Windows/Linux CI 的打包前强制夹具门禁通过后才允许创建 v0.8.4 tag/正式 Release。
+- 旧 STATUS 的 Win 106/Linux 102/Win7 33 HIT 摘要仅作为迁移前历史声明，不充当本轮可复核日志。
+- 产物由准确提交的 CI 生成，BUILDINFO 含 commit/tree/规则版本/规则源码摘要/二进制 SHA256；禁止用旧 ci-pkg 或旧 ZIP 冒充本版。
+- 本轮源码快照 SHA256：`f5b5e846fb5570fa563c8ee4818ca929f2b3b8dc3da930b38d365e7c77b582fa`（155 文件，基线 b95b53b）。
+- 最后更新：2026-11-14（北京时间）。
 
 ## 已完成
 

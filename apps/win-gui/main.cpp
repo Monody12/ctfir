@@ -208,27 +208,22 @@ static std::string sev_zh(const std::string& s) {
 
 static void update_kpi() {
     std::lock_guard<std::recursive_mutex> lk(g_mtx);
-    if (!g_sess) { set_text(g_kpi, "立刻清 0   再加固 0   溯源 0   Web 0   已隐藏清单 0"); return; }
+    if (!g_sess) { set_text(g_kpi, "先清 0   Web 0   溯源 0   加固 0   清单 0"); return; }
     KpiCounts k = count_kpi(g_sess->findings());
     char buf[256];
     std::snprintf(buf, sizeof(buf),
-                  "立刻清 %d    再加固 %d    溯源 %d    Web %d    已隐藏清单 %d    合计 %d",
-                  k.clear, k.harden, k.trace, k.web, k.inventory, k.total);
+                  "1.先清 %d    2.Web %d    3.溯源 %d    4.加固 %d    5.清单 %d    合计 %d",
+                  k.clear, k.web, k.trace, k.harden, k.inventory, k.total);
     set_text(g_kpi, buf);
 }
 
-static ViewPreset current_view() {
-    LPARAM d = combo_data(g_cmb_view);
-    if (d == 2) return ViewPreset::All;
-    if (d == 1) return ViewPreset::Team;
-    return ViewPreset::Personal;
-}
+static ViewPreset current_view() { return ViewPreset::All; }
 static std::string current_cat() {
     LPARAM d = combo_data(g_cmb_cat);
     if (d == 1) return "clear";
-    if (d == 2) return "harden";
+    if (d == 2) return "web";
     if (d == 3) return "trace";
-    if (d == 4) return "web";
+    if (d == 4) return "harden";
     if (d == 5) return "inventory";
     return "all";
 }
@@ -293,13 +288,12 @@ static void refill_findings() {
         }
     }
     char st[256];
-    std::snprintf(st, sizeof(st), "显示 %d / %d    点「全部」找回清单/事实项    只读·不修改系统",
-                  shown, total);
+    std::snprintf(st, sizeof(st), "显示 %d / %d", shown, total);
     set_text(g_stbar, st);
     if (shown > 0) {
         ListView_SetItemState(g_lst_find, 0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
     } else {
-        set_text(g_detail, "当前过滤下无条目。切换视图为「全部」可找回清单项。");
+        set_text(g_detail, "当前过滤下没有条目。");
     }
 }
 
@@ -349,7 +343,7 @@ static void show_finding_detail(int fi) {
             }
         }
     }
-    txt += "\r\n--- 手册（工具不执行）---\r\n" + instantiate_advice_body(f);
+    txt += "\r\n--- 怎么处理 ---\r\n" + instantiate_advice_body(f);
     set_text(g_detail, txt);
 }
 
@@ -411,14 +405,14 @@ static void layout() {
     HWND lblc = GetDlgItem(g_hwnd, 302);
     HWND lbls = GetDlgItem(g_hwnd, 303);
     HWND lblq = GetDlgItem(g_hwnd, 304);
-    MoveWindow(lblv, M, y + 4, 32, 18, TRUE);
-    MoveWindow(g_cmb_view, M + 32, y, 110, 200, TRUE);
-    MoveWindow(lblc, M + 150, y + 4, 32, 18, TRUE);
-    MoveWindow(g_cmb_cat, M + 182, y, 110, 200, TRUE);
-    MoveWindow(lbls, M + 300, y + 4, 32, 18, TRUE);
-    MoveWindow(g_cmb_sev, M + 332, y, 80, 200, TRUE);
-    MoveWindow(lblq, M + 420, y + 4, 32, 18, TRUE);
-    MoveWindow(g_search, M + 452, y, (std::max)(80, w - M - 452 - M), 22, TRUE);
+    ShowWindow(lblv, SW_HIDE);
+    ShowWindow(g_cmb_view, SW_HIDE);
+    MoveWindow(lblc, M, y + 4, 32, 18, TRUE);
+    MoveWindow(g_cmb_cat, M + 32, y, 110, 200, TRUE);
+    MoveWindow(lbls, M + 150, y + 4, 32, 18, TRUE);
+    MoveWindow(g_cmb_sev, M + 182, y, 80, 200, TRUE);
+    MoveWindow(lblq, M + 270, y + 4, 32, 18, TRUE);
+    MoveWindow(g_search, M + 302, y, (std::max)(80, w - M - 302 - M), 22, TRUE);
     y += filt;
     MoveWindow(g_tabs, M, y, w - 2 * M, 24, TRUE);
     y += 24;
@@ -465,13 +459,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         g_font_mono = make_font(12, FW_NORMAL, L"Consolas");
         if (!g_font_mono) g_font_mono = g_font;
 
-        std::wstring hdr = L"ctfir  只读应急工作台  ·  v";
+        std::wstring hdr = L"ctfir  应急检查  ·  v";
         hdr += utf8_to_w(kToolVersion);
         g_header = CreateWindowExW(0, L"STATIC", hdr.c_str(),
                                    WS_CHILD | WS_VISIBLE, 12, 6, 560, 20, hwnd,
                                    (HMENU)(INT_PTR)IDC_HEADER, nullptr, nullptr);
         std::string sub = detect_os_name() + " " + detect_os_version() + " [" + detect_os_arch() +
-                          "]   权限: " + detect_privilege() + "   离线 · 只读 · 工具不修改系统";
+                          "]   权限: " + detect_privilege();
         HostCompat hc = evaluate_host_compat();
         if (hc.level == "warn" && !hc.note.empty())
             sub += "   兼容性: " + hc.note;
@@ -486,7 +480,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         g_out_edit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
                                      72, 48, 400, 22, hwnd, (HMENU)(INT_PTR)IDC_OUT, nullptr, nullptr);
         make_btn(hwnd, IDC_BROWSE, L"浏览...");
-        g_btn_scan = CreateWindowExW(0, L"BUTTON", L"开始只读扫描",
+        g_btn_scan = CreateWindowExW(0, L"BUTTON", L"开始扫描",
                                        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
                                        0, 0, 100, 24, hwnd, (HMENU)(INT_PTR)IDC_SCAN, nullptr, nullptr);
         g_btn_cancel = CreateWindowExW(0, L"BUTTON", L"取消",
@@ -494,7 +488,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                                        0, 0, 56, 24, hwnd, (HMENU)(INT_PTR)IDC_CANCEL, nullptr, nullptr);
         make_btn(hwnd, IDC_OPENOUT, L"打开报告目录");
 
-        g_kpi = CreateWindowExW(0, L"STATIC", L"立刻清 0    再加固 0    溯源 0    Web 0    已隐藏清单 0",
+        g_kpi = CreateWindowExW(0, L"STATIC", L"先清 0    Web 0    溯源 0    加固 0    清单 0",
                                 WS_CHILD | WS_VISIBLE, 10, 80, 800, 20, hwnd,
                                 (HMENU)(INT_PTR)IDC_KPI, nullptr, nullptr);
 
@@ -510,16 +504,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         g_cmb_view = mkcb(IDC_VIEW);
         g_cmb_cat = mkcb(IDC_CAT);
         g_cmb_sev = mkcb(IDC_SEV);
-        combo_add(g_cmb_view, L"个人防护", 0);
-        combo_add(g_cmb_view, L"团队综合", 1);
         combo_add(g_cmb_view, L"全部", 2);
         SendMessageW(g_cmb_view, CB_SETCURSEL, 0, 0);
-        combo_add(g_cmb_cat, L"全部类别", 0);
-        combo_add(g_cmb_cat, L"立刻清", 1);
-        combo_add(g_cmb_cat, L"再加固", 2);
-        combo_add(g_cmb_cat, L"溯源", 3);
-        combo_add(g_cmb_cat, L"Web/中间件", 4);
-        combo_add(g_cmb_cat, L"清单/事实", 5);
+        combo_add(g_cmb_cat, L"全部", 0);
+        combo_add(g_cmb_cat, L"1.先清", 1);
+        combo_add(g_cmb_cat, L"2.Web", 2);
+        combo_add(g_cmb_cat, L"3.溯源", 3);
+        combo_add(g_cmb_cat, L"4.加固", 4);
+        combo_add(g_cmb_cat, L"5.清单", 5);
         SendMessageW(g_cmb_cat, CB_SETCURSEL, 0, 0);
         combo_add(g_cmb_sev, L"全部风险", 0);
         combo_add(g_cmb_sev, L"高", 1);
@@ -563,12 +555,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         CreateWindowExW(0, L"STATIC", L"详情（命令 / 证据 / 手册）", WS_CHILD | WS_VISIBLE,
                         0, 0, 200, 18, hwnd, (HMENU)305, nullptr, nullptr);
         make_btn(hwnd, IDC_COPY_CMD, L"复制命令");
-        make_btn(hwnd, IDC_COPY_ADV, L"复制手册");
+        make_btn(hwnd, IDC_COPY_ADV, L"复制处理");
         make_btn(hwnd, IDC_COPY_ALL, L"复制全部");
         g_detail = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
                                    WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_READONLY | WS_VSCROLL,
                                    0, 0, 100, 80, hwnd, (HMENU)(INT_PTR)IDC_DETAIL, nullptr, nullptr);
-        g_stbar = CreateWindowExW(0, L"STATIC", L"就绪 · 只读模式 · 个人防护默认隐藏清单/事实",
+        g_stbar = CreateWindowExW(0, L"STATIC", L"就绪",
                                    WS_CHILD | WS_VISIBLE,
                                    0, 0, 100, 22, hwnd, (HMENU)(INT_PTR)IDC_STATUS, nullptr, nullptr);
 
@@ -585,7 +577,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         SendMessageW(g_detail, WM_SETFONT, (WPARAM)g_font_mono, TRUE);
         SendMessageW(g_log, WM_SETFONT, (WPARAM)g_font_mono, TRUE);
         SendMessageW(g_stbar, WM_SETFONT, (WPARAM)g_font, TRUE);
-        append_log("[init] ctfir 只读应急工作台就绪（仅扫描与建议，不修改系统）");
+        append_log("[init] 就绪。扫描后按 先清 → Web → 溯源 → 加固 处理。");
         layout();
         return 0;
     }
@@ -675,7 +667,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             }
             EnableWindow(g_btn_scan, FALSE);
             EnableWindow(g_btn_cancel, TRUE);
-            append_log("[scan] 开始只读扫描 → " + std::string(dir));
+            append_log("[scan] 开始扫描 → " + std::string(dir));
             TabCtrl_SetCurSel(g_tabs, 1);
             show_tab(1);
             CreateThread(nullptr, 0, scan_thread, nullptr, 0, nullptr);
@@ -807,7 +799,7 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nShow) {
     wc.lpszClassName = L"CTFIR_GUI_MAIN";
     if (!RegisterClassW(&wc)) return 10;
 
-    HWND hwnd = CreateWindowExW(0, wc.lpszClassName, L"ctfir — 只读应急工作台",
+    HWND hwnd = CreateWindowExW(0, wc.lpszClassName, L"ctfir 应急检查",
                                 WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
                                 1024, 720, nullptr, nullptr, hInst, nullptr);
     if (!hwnd) return 11;

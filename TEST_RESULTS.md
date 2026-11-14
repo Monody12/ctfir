@@ -654,3 +654,39 @@ Win7 已部署 `C:\ctfir-test\ctfir.exe` / `ctfir-gui.exe` 本轮产物。JW2026
 | linux/ctfir_tests | 9c23810a79e3b360a1561a0d836f7b9d3a1d0fef65c25f98a1af0b771190e979 | 3290272 |
 
 未打 `v0.8.0` tag——等 push 后 CI 绿。JW2026-WIN7-01 夹具待练题，勿清。
+
+
+## 2026-11-14 v0.8.4（#44：工作区迁移、发布可追溯性与隔离回归）
+
+### 来源与边界
+
+- 原 Windows HEAD=`b95b53bb282970911ea71542c68c2ed14a21c8b0`；33 tracked 文件变更（+930/-406）及新增 lnx_heuristics/单测/exam-hf。
+- 155 文件源码快照（包含未跟踪源码、排除 .git/凭据/无关二进制），ZIP SHA256=`f5b5e846fb5570fa563c8ee4818ca929f2b3b8dc3da930b38d365e7c77b582fa`。迁移逐文件 SHA256 一致；原用户仓库不修改、练习环境不清理。
+- 版本统一：工具/CMake 0.8.4，规则包 7.2.2，191 检测点。补齐 Windows 未提交的全部源码后，在 box 作发布必要修正。
+- 旧 STATUS 的测试摘要对应报告/二进制目录已不存在，不作为本轮通过证据。
+
+### 发布安全修正
+
+- 高频 Linux 夹具仅在全新 `--network none` 容器执行（只读源码/二进制挂载）；宿主 EXIT/INT/TERM trap 只移除本次命名容器，不运行破坏性系统文件 cleanup。
+- Windows 高频夹具仅允许 GitHub-hosted runner，无 JW2026 依赖，16 项独立断言；文件逐项备份/恢复，注册表值/类型 finally 还原并断言；不创建/清理 .env/.git，不读真实 PS 历史。
+- Dirty Pipe 修复 stable 5.10.102 / 5.15.25 / 5.16.12 边界；ld.so `/usr/libevil` 不再当标准目录。新增负例/边界测试。
+- 动作展示拒绝把对象中的 shell 元字符拼进可复制命令；新 INITD/XINETD 处置拒绝相同恶意对象。
+- package.sh 与 package-ci.sh 共用 buildinfo.py，元数据包括 version/rule_pack/source_commit/source_tree/source_dirty/rule_pack_source_sha256/binary_sha256。CI 拒绝 dirty source；tag 构建与实际工具版本须一致。
+- 正常 CI 与 release CI 的 Stage package 都强制执行 release-checks.sh，失败不产出发布包。
+
+### 本轮已实际执行（box，Alpine 3.20 / Linux 宿主，不是 3.10 内核）
+
+- `bash scripts/build-linux.sh`（便携路径入口）：首轮 102/102；补 stable/kernel 与路径边界后 104/104，failures=0。动作安全用例增加后需再跑，结果补记见下。
+- `bash scripts/release-checks.sh linux-x86_64 out/linux/ctfir`：alpine:3.20、centos:7、debian:8、ubuntu:16.04 各 **43/43**；L39 hidepid **PASS**；CentOS 高频 **59/59**；退出码 0；本轮容器测后不存在。
+- `python3 scripts/scan_bad_escapes.py`：total **0**；`git diff --check` 无错误；shell/Python 发布脚本语法检查通过。
+- 本轮误报口径：基础夹具预设负例及单测负例通过；不把发行版原生加固发现算成“全机零误报”，不把无 marker 等同安全。
+- Windows 本轮尚待远端 VS2022 CI；不能将迁移前的 106/106、Win7 33/33 自动记作本轮 PASS。
+
+### 发布限制
+
+真实 Server 2008 R2、CentOS 3.10 内核仍未实测。Windows CI 是 Server 2022，不是 Win7/域控真机。Linux 容器只验证各发行版用户态；事件 XML 合成用例不等于真实 2008 R2 OS 已验。GUI 无自动执行按钮；高频夹具不得在已有用户练习环境直接运行。
+
+### box 最终源码补验
+
+- 动作对象 shell 元字符防护加入后，`bash scripts/build-linux.sh` 单测 **105/105**，failures=0，退出码 0；binary version=0.8.4。
+- 最终源码再次运行 Linux 发布门禁：四发行版各 **43/43**、hidepid PASS、CentOS 高频 **59/59**，退出码 0；`package-ci.sh` 本地元数据冒烟成功（dirty=true，不作为发布产物）。

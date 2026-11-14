@@ -179,5 +179,8 @@
 | 188 | Remote Registry 自动启动 | [技能赛] | WIN.BASE.REMOTEREG.001 | Start=AUTO | 手动/禁用静默 |
 | 189 | 网络访问按来宾模型 | [技能赛] | WIN.BASE.FORCEGUEST.001 | ForceGuest=1 | 0/缺 静默 |
 
-合计 **189** 检测点（142 + v0.8 AD/Server 47）。新检测点必须：先入本表 → 实现 → 单测/夹具 → 断言通过。
+| 190 | xinetd/inetd 后门服务 | [CTF][CentOS7] | LNX.PERSIST.XINETD.001 | `/etc/xinetd.d` 的 `server=/tmp` 或 `bash -i` | 发行版 sshd/rsync 短名不报 |
+| 191 | SysV init.d 后门脚本 | [CTF][CentOS7] | LNX.PERSIST.INITD.001 | `/etc/init.d` 含 curl\|sh、/tmp、/dev/tcp | functions/network 跳过 |
+
+合计 **191** 检测点。新检测点必须：先入本表 → 实现 → 单测/夹具 → 断言通过。
 域账户 LDAP、krbtgt、DCSync、黄金票、ADCS 仍不在本表（见 AD-SERVER-POINTS.md D 节，C 级）。

@@ -1,6 +1,7 @@
 // Linux 基线核查模块族（v0.4）：空口令/弱口令、密码策略、登录限制、内核参数、
 // 关键文件权限、不安全服务、内核版本漏洞线索、补丁与审计状态。
 #include "lnx_common.hpp"
+#include "core/lnx_heuristics.hpp"
 #include "platform/modules_registry.hpp"
 
 #include <crypt.h>
@@ -217,23 +218,15 @@ void mod_base_policy(ModuleCtx& ctx) {
             for_each_line(pr.content, [&](int no, const std::string& line) {
                 std::string t = trim(line);
                 if (t.empty() || t[0] == '#') return;
-                bool sus = t.find("pam_exec.so") != std::string::npos ||
-                           (t.find("/tmp/") != std::string::npos) ||
-                           (t.find("/dev/shm") != std::string::npos) ||
-                           (t.find(".so") != std::string::npos &&
-                            t.find("/lib64/security/") == std::string::npos &&
-                            t.find("/lib/security/") == std::string::npos &&
-                            t.find("/usr/lib64/security/") == std::string::npos &&
-                            t.find("/usr/lib/security/") == std::string::npos);
-                if (sus) {
+                if (ctfir::pam_line_is_backdoor(t)) {
                     Finding f;
                     f.rule_id = "LNX.PERSIST.PAM.001";
                     f.severity = "high";
                     f.confidence = "medium";
-                    f.rationale = "PAM 配置含可疑模块调用（pam_exec/临时目录/非标准 .so 路径）: " +
-                                  t.substr(0, 160) + "（PAM 后门可在登录时执行任意命令）";
+                    f.rationale = "PAM 配置含后门模块（pam_exec / 临时目录 / 非 pam_*.so）: " +
+                                  t.substr(0, 160);
                     f.object_ref = p + ":" + std::to_string(no);
-                    f.advice_id = "ADVICE.HARDEN.001";
+                    f.advice_id = "ADVICE.PRELOAD.REVIEW.001";
                     ctx.add_finding(f);
                 }
             });
@@ -252,6 +245,8 @@ void mod_base_policy(ModuleCtx& ctx) {
             if (seen < 6 || p1 < 0 || p3 < 0 || p6 < 0) return;
             int uid = std::atoi(t.substr(p3 + 1).c_str());
             if (uid >= 1000) return;
+            std::string name = t.substr(0, p1);
+            if (name == "root") return; // root 可登录是正常的，不要改成 nologin
             std::string shell = t.substr(p6 + 1);
             if (shell.empty() || shell == "/sbin/nologin" || shell == "/bin/false" ||
                 shell == "/usr/sbin/nologin" || shell == "/bin/sync" || shell == "/sbin/shutdown" ||
@@ -372,13 +367,8 @@ void mod_base_kernel(ModuleCtx& ctx) {
     };
     int k[3] = {0, 0, 0};
     if (parse3(ver, k)) {
-        auto lt = [](const int a[3], int x, int y, int z) {
-            if (a[0] != x) return a[0] < x;
-            if (a[1] != y) return a[1] < y;
-            return a[2] < z;
-        };
-        bool dirtycow = (k[0] == 4 && lt(k, 4, 8, 3)) || (k[0] < 4);
-        bool dirtypipe = (k[0] == 5 && k[1] >= 8) || (k[0] > 5);
+        bool dirtycow = dirtycow_version_affected(k[0], k[1], k[2]);
+        bool dirtypipe = dirtypipe_version_affected(k[0], k[1], k[2]);
         if (dirtycow) {
             Finding f;
             f.rule_id = "LNX.BASE.KCVE.001";
