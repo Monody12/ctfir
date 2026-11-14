@@ -340,3 +340,12 @@ CTFIR_TEST(linux_process_snapshot_never_generates_kill) {
         }
     }
 }
+
+CTFIR_TEST(linux_unverified_privilege_facts_are_not_cleanup_orders) {
+    Finding f; f.rule_id = "LNX.SUID.UNEXPECTED.001"; f.object_ref = "/usr/bin/ctfir-marker-package-tool"; f.confidence = "low";
+    CHECK(bucket_of(f) == Bucket::Trace);
+    CHECK(!plan_remediation(f).supported);
+    CHECK(display_action(f).command.find("chmod") == std::string::npos);
+    f.confidence = "high"; CHECK(bucket_of(f) == Bucket::Clear);
+    f.rule_id = "LNX.CAPS.UNEXPECTED.001"; CHECK(bucket_of(f) == Bucket::Trace);
+}

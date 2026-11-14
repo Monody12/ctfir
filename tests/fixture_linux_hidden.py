@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """One command: python3 tests/fixture_linux_hidden.py /absolute/ctfir [image ...]."""
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -18,9 +19,21 @@ def require(condition, message):
     checks += 1
     print('[PASS]', message, flush=True)
 
+with tempfile.TemporaryDirectory(prefix='ctfir-process-build-') as build:
+    source = pathlib.Path(__file__).with_name('fixture_process.cpp').resolve()
+    builder = os.environ.get('CTFIR_TEST_BUILDER', 'ctfir-builder:alpine3.20')
+    subprocess.run(['docker', 'run', '--rm', '--network', 'none', '-v', f'{source}:/fixture.cpp:ro',
+                    '-v', f'{build}:/out', builder, 'sh', '-ec',
+                    f'g++ -static -Os /fixture.cpp -o /out/ctfir-marker-sleeper && chown {os.getuid()}:{os.getgid()} /out/ctfir-marker-sleeper'], check=True)
+    sleeper_bytes = (pathlib.Path(build)/'ctfir-marker-sleeper').read_bytes()
+
 for image in images:
     with tempfile.TemporaryDirectory(prefix='ctfir-hidden-') as temp:
+        sleeper = pathlib.Path(temp)/'ctfir-marker-sleeper'
+        sleeper.write_bytes(sleeper_bytes); sleeper.chmod(0o755)
         subprocess.run(['docker', 'run', '--rm', '--network', 'none', '-e', 'CTFIR_DISPOSABLE_LAB=1',
+                        '-e', f'CTFIR_HOST_UID={os.getuid()}', '-e', f'CTFIR_HOST_GID={os.getgid()}',
+                        '-v', f'{sleeper}:/opt/ctfir-marker-sleeper:ro',
                         '-v', f'{binary}:/opt/ctfir:ro', '-v', f'{fixture}:/fixture.sh:ro',
                         '-v', f'{temp}:/ctfir-out', image, 'sh', '/fixture.sh', '/opt/ctfir'], check=True)
         root = pathlib.Path(temp)
@@ -30,6 +43,10 @@ for image in images:
         def hit(rule, text):
             return [x for x in positive if x['rule_id'] == rule and text in x['object_ref']]
         require(bool(hit('LNX.SUID.UNEXPECTED.001', '/var/tmp/.ctfir-marker-cache')), image+' hidden ELF SUID')
+        baseline = hit('LNX.SUID.UNEXPECTED.001', '/usr/bin/ctfir-marker-baseline-suid')
+        require(bool(baseline) and baseline[0]['confidence']=='low', image+' unverified standard SUID stays a clue')
+        reference = hit('LNX.PERSIST.CRON.001', 'ctfir-marker-reference')
+        require(bool(reference) and reference[0]['confidence']=='high' and '/usr/local/bin/ctfir-marker-reference.sh' in reference[0]['evidence_paths'], image+' follow one inert referenced script')
         script = hit('LNX.SUID.UNEXPECTED.001', '/var/tmp/.ctfir-marker-script')
         require(bool(script) and 'Linux' in script[0]['rationale'], image+' script SUID limitation')
         require(bool(hit('LNX.PERSIST.CRON.001', 'ctfir-marker-hidden')), image+' cron hidden script')

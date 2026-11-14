@@ -347,7 +347,7 @@ void mod_cron(ModuleCtx& ctx) {
     size_t followed = 0;
     for (const auto& f : files) {
         struct stat source_stat{};
-        if (!lstat(f.c_str(), &source_stat) && S_ISDIR(source_stat.st_mode)) continue;
+        if (!stat(f.c_str(), &source_stat) && S_ISDIR(source_stat.st_mode)) continue;
         ReadResult r = read_source(ctx, f, false);
         if (!r.ok) continue;
         for_each_line(r.content, [&](int no, const std::string& line) {

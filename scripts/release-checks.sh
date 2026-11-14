@@ -23,6 +23,6 @@ else
   done
   docker run --rm --network none --privileged -v "$BIN:/opt/ctfir:ro" \
     -v "$PWD/tests/fixture_hidepid.sh:/fx.sh:ro" alpine:3.20 sh /fx.sh /opt/ctfir
-  python3 tests/fixture_linux_hidden.py "$BIN"
+  CTFIR_TEST_BUILDER=ctfir-builder:ci python3 tests/fixture_linux_hidden.py "$BIN"
   bash tests/practice/exam-hf/run-linux.sh "$BIN"
 fi

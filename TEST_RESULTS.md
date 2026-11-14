@@ -719,3 +719,5 @@ Win7 已部署 `C:\ctfir-test\ctfir.exe` / `ctfir-gui.exe` 本轮产物。JW2026
 - 仍未测：真 Server 2008 R2、真实 3.10 内核；容器仅验证发行版用户态。5555 端口本身不作为后门断言；auth.log/wtmp 不一致只能是待解释异常。
 
 - 推送前最小检查：`bash scripts/build-linux.sh` exit=0，Linux 单测 **111/111**；`python3 scripts/scan_bad_escapes.py` exit=0、0处。新四发行版集成夹具交由本提交 CI 首次验证；未提前写 PASS。
+
+- CI 首轮失败保留：新夹具错误把 scan exit=1（有发现）当脚本失败，且 Alpine busybox 按伪装 argv0 选择 applet 导致测试进程退出。修正退出码契约，另编译仅 sleep 的静态无害测试进程；输出目录 trap 归还宿主 UID/GID，保证临时目录可自动销毁。不是把漏检断言删除。

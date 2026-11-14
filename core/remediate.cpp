@@ -231,6 +231,7 @@ RemediationPlan plan_remediation(const Finding& f) {
     }
     // ---------- SUID 权限收敛（去掉 SUID 位） ----------
     if (rid == "LNX.SUID.UNEXPECTED.001") {
+        if (f.confidence == "low") { p.reason = "无可信包基线，仅保留 SUID 事实，不自动修改权限"; return p; }
         if (obj.empty()) { p.reason = "无法解析文件路径"; return p; }
         p.supported = true;
         p.backups.push_back("stat \"" + obj + "\"");

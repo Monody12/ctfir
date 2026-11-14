@@ -622,6 +622,10 @@ DisplayAction display_action(const Finding& f) {
         a.command = is_digits(pid) ? "ps -p " + pid + " -o pid,ppid,comm,args\nreadlink /proc/" + pid + "/exe" : "只读复核当前进程身份；不要按过期 PID 终止进程";
         a.contest_note = "只读复核，不生成 STOP/KILL；PID 1 和系统服务尤其不能盲目终止。";
     }
+    if (rid == "LNX.SUID.UNEXPECTED.001" && f.confidence == "low") {
+        a.command = "stat \"" + obj + "\"";
+        a.contest_note = "无可信包基线；先比对发行版包，不直接删除或去掉 SUID。";
+    }
     if (a.command.empty()) a.command = from_plan(f);
 
     if (a.command.empty() && starts_with(rid, "LNX.")) {
