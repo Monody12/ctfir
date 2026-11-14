@@ -165,6 +165,10 @@ CTFIR_TEST(shell_payload_and_writable_path_variants) {
     CHECK(linux_command_risk("/opt/ctfir-marker/worker") == 0);
 }
 CTFIR_TEST(proc_titles_and_kernel_camouflage) {
+    CHECK(linux_claimed_name("sshd: root@pts/1") == "sshd: root@pts/1");
+    CHECK(linux_claimed_name("[kworker/2:1]") == "[kworker/2:1]");
+    CHECK(linux_claimed_name("/usr/sbin/sshd") == "sshd");
+    CHECK(proc_claimed_matches_exe(linux_claimed_name("sshd: root@pts/1"), "sshd"));
     CHECK(proc_claimed_matches_exe("Thunar", "thunar"));
     CHECK(proc_claimed_matches_exe("init", "systemd"));
     CHECK(proc_claimed_matches_exe("(sd-pam)", "systemd"));

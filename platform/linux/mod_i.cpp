@@ -176,8 +176,7 @@ void mod_procmismatch(ModuleCtx& ctx) {
         std::string argv0 = cmd.content.substr(0, cmd.content.find('\0'));
         // argv[0] 通常是完整路径，取最后一段作为"声称的命令名"
         bool kernel_claim = argv0.front() == '[';
-        size_t slash = kernel_claim ? std::string::npos : argv0.find_last_of('/');
-        std::string claimed = slash == std::string::npos ? argv0 : argv0.substr(slash + 1);
+        std::string claimed = linux_claimed_name(argv0);
         if (claimed.empty()) continue;
         // 读 exe 符号链接（真实二进制路径）
         char buf[1024]{};

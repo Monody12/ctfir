@@ -21,9 +21,7 @@ void mod_tmp_proc(ModuleCtx& ctx) {
         if (n <= 0) continue;
         std::string exe(buf, static_cast<size_t>(n));
         std::string low = to_lower(exe);
-        size_t sl = exe.find_last_of('/');
-        std::string exe_base = sl == std::string::npos ? exe : exe.substr(sl + 1);
-        if (exe_base == "ctfir" || exe_base == "ctfir_tests") continue;
+        if (base == std::to_string(getpid())) continue; // only this scanner, not arbitrary files named ctfir
         // exe 路径在临时/可写目录
         if (low.find("/tmp/") != std::string::npos || low.find("/dev/shm/") != std::string::npos ||
             low.find("/var/tmp/") != std::string::npos) {

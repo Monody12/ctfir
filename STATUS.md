@@ -1,7 +1,7 @@
 # STATUS
 
 - 当前版本：**0.8.5** / 规则包 **7.2.3** / 检测点 **192**。
-- 本轮定向修复：隐藏 SUID/cron/systemd/常驻进程，减少报告噪声，禁止按进程快照给 STOP/KILL。采用 CI 优先；本提交门禁结果以对应 Actions 与 TEST_RESULTS #45 为准，当前尚不声称已发布。
+- 本轮定向修复：隐藏 SUID/cron/systemd/常驻进程、报告噪声、禁止按进程快照给 STOP/KILL。CI优先验证记录：`43612183540` 双平台 success，Win116/Linux112 单测；四版新增回归76/76；基础Win29、Linux各43，另高频/GUI/hidepid通过，见 TEST_RESULTS #45。最终包仅从对应准确提交成功CI取产物，正式Release状态以 GitHub v0.8.5 查询为准。
 - 当前 Kali 未保留四处历史植入对象；没有改动/清理其配置、证据或进程，不冒称原 10 点场景通过。
 
 ## v0.8.4 历史发布状态

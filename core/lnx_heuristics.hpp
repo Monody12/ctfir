@@ -152,6 +152,12 @@ inline bool cap_name_expected(const std::string& name) {
     return false;
 }
 
+inline std::string linux_claimed_name(const std::string& argv0) {
+    // Non-path process titles may contain slashes (sshd: root@pts/1, [kworker/2:1]).
+    if (argv0.empty() || argv0[0] != '/') return argv0;
+    return argv0.substr(argv0.find_last_of('/') + 1);
+}
+
 // pipewire-pulse / pipewire、systemd-xxx / systemd 视为包装名，不是伪装
 inline bool proc_claimed_matches_exe(const std::string& claimed, const std::string& exe_name) {
     if (claimed.empty() || exe_name.empty()) return true;

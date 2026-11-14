@@ -7,7 +7,7 @@
 
 - 工具 **0.8.5** / 规则包 **7.2.3** / 检测点 **192**。新增 `LNX.PROC.SUSPECT.001`，扩展 SUID/CRON/SYSTEMD/NAMEMISMATCH，修正 LDSO，CAPS inode 去重与调查线索分流。
 - 有界范围：SUID 标准目录及 /tmp /var/tmp /dev/shm /usr/local，深度4/8000项/不追目录链接；非全盘，权限/预算遗漏必须可见。脚本 SUID 仅报权限事实，Linux 通常忽略脚本 SUID。
-- `tests/fixture_linux_hidden.py` 接入 CI 打包门禁，四发行版正/负/非root权限/清理复扫；测试数字必须以本次 CI 与 #45 为准，不能复用下方历史数字。
+- `tests/fixture_linux_hidden.py` 接入 CI 打包门禁，四发行版正/负/非root权限/清理复扫 **76/76**（每版19）；Windows **116/116**、基础29/29+高频16/16+GUI；Linux **112/112**、基础四版各43/43+hidepid+高频。对应验证 CI `43612183540`，最终包还须其准确提交 CI 通过；数字不能复用下方历史结果。
 - Kali 原始植入对象当前不存在；本轮只读状态核查与新二进制回扫不能替代原 10 点植入态验证。真 2008R2/3.10 内核限制保留。
 
 ## v0.8.4 发布门禁（历史）（2026-11-14，TEST_RESULTS #44）

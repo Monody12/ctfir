@@ -721,3 +721,7 @@ Win7 已部署 `C:\ctfir-test\ctfir.exe` / `ctfir-gui.exe` 本轮产物。JW2026
 - 推送前最小检查：`bash scripts/build-linux.sh` exit=0，Linux 单测 **111/111**；`python3 scripts/scan_bad_escapes.py` exit=0、0处。新四发行版集成夹具交由本提交 CI 首次验证；未提前写 PASS。
 
 - CI 首轮失败保留：新夹具错误把 scan exit=1（有发现）当脚本失败，且 Alpine busybox 按伪装 argv0 选择 applet 导致测试进程退出。修正退出码契约，另编译仅 sleep 的静态无害测试进程；输出目录 trap 归还宿主 UID/GID，保证临时目录可自动销毁。不是把漏检断言删除。
+
+- 已执行 CI：`https://github.com/Monody12/ctfir/actions/runs/43612183540`，commit `9a0d0c6`，双平台 success。Windows **116/116**；基础 **29/29**；高频 **16/16**；GUI `window_created=1 modules=31`。Linux **112/112**，四发行版基础各 **43/43**，新增隐藏链夹具 **76/76**，hidepid 与高频门禁通过（确切高频总数见对应日志）。
+- Kali 同机只读 A/B（准确 CI Linux 二进制）：0.8.4 **45** findings → 中间修复提交9a0d0c6的0.8.5 **32**；LDSO 2→0，名称差异8→1，caps 6→2（设备/inode去重，含同文件别名）。前后 stat/cron/systemd/ss 状态文本完全相同。不是误报率，也不是原始植入态10/10。
+- A/B 暴露并修正两个剩余噪声：`sshd: root@pts/1` 非绝对路径标题不应按斜杠切分；扫描器自身按 getpid 排除，不再按任意名为 ctfir 的文件白名单。最终提交须再次通过同套 CI，最终包只取该提交产物。
