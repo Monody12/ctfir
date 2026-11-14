@@ -1,6 +1,7 @@
 #include "test_macros.hpp"
 #include "core/triage.hpp"
 #include "core/display_action.hpp"
+#include "core/remediate.hpp"
 #include "core/report.hpp"
 #include "core/advice.hpp"
 #include "core/util.hpp"
@@ -320,6 +321,9 @@ CTFIR_TEST(display_action_untrusted_object_no_shell_injection) {
     f.rule_id = "LNX.PERSIST.INITD.001";
     f.object_ref = "/etc/init.d/$(touch /tmp/unwanted):1";
     CHECK(display_action(f).command.empty());
+    CHECK(!plan_remediation(f).supported);
+    f.rule_id = "LNX.PERSIST.XINETD.001";
+    CHECK(!plan_remediation(f).supported);
     f.rule_id = "WIN.SVC.SUSPECT.001";
     f.object_ref = "evil\" & calc & \"";
     CHECK(display_action(f).command.empty());

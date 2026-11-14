@@ -94,6 +94,8 @@ void walk_files(const std::string& root, int depth, int max_depth, int& nfiles, 
         if (fd.cFileName[0] == '.' &&
             (fd.cFileName[1] == 0 || (fd.cFileName[1] == '.' && fd.cFileName[2] == 0)))
             continue;
+        // Do not recurse NTFS junctions/symlinks (ProgramData/Application Data loops).
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) continue;
         std::string fp = root + "\\" + fd.cFileName;
         if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
             walk_files(fp, depth + 1, max_depth, nfiles, max_files, fn);

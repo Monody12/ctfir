@@ -170,8 +170,10 @@ inline bool is_sysvol_script_name(const std::string& path) {
 
 inline bool path_looks_like_sysvol_scripts(const std::string& path) {
     std::string l = path_norm_lower(path);
-    return l.find("\\scripts\\") != std::string::npos ||
-           l.find("\\netlogon\\") != std::string::npos;
+    return l.find("\\netlogon\\") != std::string::npos ||
+           ((l.find("\\sysvol\\") != std::string::npos ||
+             l.find("\\policies\\") != std::string::npos) &&
+            l.find("\\scripts\\") != std::string::npos);
 }
 
 // ProgramData 等噪音目录只处理可能含考点的文件，避免 500 文件预算被吃光。

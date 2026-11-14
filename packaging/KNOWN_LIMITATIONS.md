@@ -53,3 +53,4 @@
 - Dirty Pipe 版本提示排除 stable 5.10.102 / 5.15.25 / 5.16.12；发行版回补仍需结合供应商补丁核实，版本线索不是漏洞利用证明。
 - 对象含 shell 元字符时不生成可复制动作；请以证据与手册核实，不将工具建议当作自动安全处置。
 - 包内 BUILDINFO 对应本次准确源码 commit/tree、规则包及二进制哈希；源码、旧版 ZIP 或其他版本的 CI artifact 均不能混用。
+- AD 文件枚举不跟随 NTFS reparse point/junction，防止循环和重复误报；若 SYSVOL 通过 junction 暴露，需用 `--dir` 指定真实目标路径。此轮没有真实 DC 验收。

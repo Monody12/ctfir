@@ -690,3 +690,10 @@ Win7 已部署 `C:\ctfir-test\ctfir.exe` / `ctfir-gui.exe` 本轮产物。JW2026
 
 - 动作对象 shell 元字符防护加入后，`bash scripts/build-linux.sh` 单测 **105/105**，failures=0，退出码 0；binary version=0.8.4。
 - 最终源码再次运行 Linux 发布门禁：四发行版各 **43/43**、hidepid PASS、CentOS 高频 **59/59**，退出码 0；`package-ci.sh` 本地元数据冒烟成功（dirty=true，不作为发布产物）。
+
+### 首次远端 CI（保留失败事实）
+
+- 提交 e2ccad9，run `43600130247`：Linux job success；Windows 构建与 **109/109** 单测成功，基础夹具 **29/29**（真实 System7045、Security4697 命中/清理均成功）。
+- Windows 高频 15/16：勒索文件名带 ctfir 被既有规则主动忽略，fixture 失败而非工具编译失败；finally 清理仍 verified。修正为本次自有 `exam-marker-*` 文件（仍逐项备份/还原），不放宽断言。
+- 同一日志发现 UEV 普通 Scripts 被误判 SYSVOL，且 ProgramData junction 递归产生重复。安全修正：SYSVOL/Scripts 必须位于 SYSVOL/Policies/NETLOGON 上下文，AD walker 不跟随 reparse point；增加普通 UEV 路径负例。
+- 强化基础 Windows 门禁：4697、System7045 与可写路径启发式必须命中；auditpol 备份/恢复和清理异常不再被软跳过。另加入 GUI window_created 自检。

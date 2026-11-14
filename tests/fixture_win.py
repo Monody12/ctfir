@@ -71,7 +71,7 @@ def run_cleaners():
             fn()
             print("[CLEAN] " + name)
         except Exception as e:
-            print("[CLEAN-ERR] %s: %s" % (name, e))
+            bad("cleanup failed %s: %s" % (name, e))
 
 
 atexit.register(run_cleaners)
@@ -375,14 +375,18 @@ def setup_service(c):
 
 
 def setup_audit_4697(c):
-    """Best-effort: enable Security System Extension audit so 4697 is written."""
+    """Required: both 7045 and 4697 must be observed, never silently skipped."""
     bak = os.path.join(c.root, "auditpol-backup.csv")
     rc, out = run(["auditpol.exe", "/backup", "/file:%s" % bak])
+    if rc != 0:
+        raise RuntimeError("auditpol backup failed: " + out)
     if rc == 0:
         c.auditpol_backup = bak
 
         def restore():
-            run(["auditpol.exe", "/restore", "/file:%s" % bak])
+            rc_restore, text = run(["auditpol.exe", "/restore", "/file:%s" % bak])
+            if rc_restore != 0:
+                raise RuntimeError("auditpol restore failed: " + text)
         add_cleaner("auditpol", restore)
     # Try both English and Chinese subcategory names
     for sub in [
@@ -395,8 +399,7 @@ def setup_audit_4697(c):
             note("auditpol enabled: %s" % sub)
             return True
         note("auditpol try %s rc=%s" % (sub, rc))
-    note("auditpol 4697 enable failed; System 7045 still expected")
-    return False
+    raise RuntimeError("Required auditpol 4697 setup failed")
 
 
 def setup_authfail(c):
@@ -837,13 +840,14 @@ def main():
         else:
             bad("F33 GBK hosts entry not parsed")
         # F36 7045 + 4697
-        f7045 = has_rule(findings, "WIN.EVT.SVC7045.001", "ctfir-marker-svc")
+        f7045 = next((f for f in rule_hits(findings, "WIN.EVT.SVC7045.001")
+                      if "System 7045:ctfir-marker-svc" in f.get("object_ref", "")), None)
         if f7045:
             blob = (f7045.get("rationale") or "") + (f7045.get("object_ref") or "")
-            if "可写" in blob or "writable" in blob.lower() or "Users" in blob or "Public" in blob or "Temp" in blob:
+            if "可写" in blob or "writable" in blob.lower():
                 ok("F36 WIN.EVT.SVC7045.001 hit + writable-path heuristic")
             else:
-                ok("F36 WIN.EVT.SVC7045.001 hit (rationale: %s)" % blob[:160])
+                bad("F36 missing writable-path heuristic: %s" % blob[:160])
         else:
             bad("F36 WIN.EVT.SVC7045.001 MISSING for ctfir-marker-svc")
         f4697 = has_rule(findings, "WIN.EVT.SVC7045.001", "4697")
@@ -857,9 +861,7 @@ def main():
         if hit_4697:
             ok("F36b Security 4697 hit for ctfir-marker-svc")
         else:
-            # not a hard fail if audit policy cannot emit 4697; record
-            note("Security 4697 for ctfir-marker-svc not observed (audit policy / event delay). 7045 is the System-channel counterpart.")
-            # still count as informational; do not fail the suite if 7045 passed
+            bad("F36b required Security 4697 for ctfir-marker-svc not observed")
         # F37 system service negative: svchost / System32 should not appear as SVC7045
         fp37 = False
         for f in rule_hits(findings, "WIN.EVT.SVC7045.001"):

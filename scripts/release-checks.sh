@@ -10,6 +10,7 @@ if [ "$PLATFORM" = windows-x64 ]; then
   "$PYTHON" tests/fixture_win.py
   "$PYTHON" tests/practice/exam-hf/run_windows.py "$BIN"
   "$BIN" version
+  "$PYTHON" scripts/gui-smoke.py "$(dirname "$BIN")/ctfir-gui.exe"
 else
   python3 scripts/scan_bad_escapes.py
   BIN=$(realpath "$BIN")

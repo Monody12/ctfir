@@ -59,6 +59,8 @@ CTFIR_TEST(ad_sysvol_script_name) {
     CHECK(!is_sysvol_script_name("C:\\Windows\\SYSVOL\\sysvol\\d\\scripts\\readme.txt"));
     CHECK(path_looks_like_sysvol_scripts("C:\\Windows\\SYSVOL\\sysvol\\ctfir.local\\scripts\\a.bat"));
     CHECK(!path_looks_like_sysvol_scripts("C:\\Windows\\Temp\\a.bat"));
+    CHECK(!path_looks_like_sysvol_scripts("C:\\ProgramData\\Microsoft\\UEV\\Scripts\\RegisterInboxTemplates.ps1"));
+    CHECK(path_looks_like_sysvol_scripts("C:\\Windows\\SYSVOL\\domain\\Policies\\gpo\\Machine\\Scripts\\Startup\\a.ps1"));
 }
 
 CTFIR_TEST(ad_gptmpl_default_admins_negative) {
