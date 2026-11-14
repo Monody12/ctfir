@@ -328,3 +328,15 @@ CTFIR_TEST(display_action_untrusted_object_no_shell_injection) {
     f.object_ref = "evil\" & calc & \"";
     CHECK(display_action(f).command.empty());
 }
+
+CTFIR_TEST(linux_process_snapshot_never_generates_kill) {
+    for (const auto& rid : {"LNX.PROC.NAMEMISMATCH.001", "LNX.PROC.MINER.001", "LNX.PROC.TMPDIR.001", "LNX.PROC.SUSPECT.001"}) {
+        for (const auto& pid : {"1", "913", "2703"}) {
+            Finding f; f.rule_id = rid; f.object_ref = std::string("PID ") + pid;
+            CHECK(!plan_remediation(f).supported);
+            auto action = display_action(f);
+            CHECK(action.command.find("kill ") == std::string::npos);
+            CHECK(action.command.find("ps -p ") != std::string::npos);
+        }
+    }
+}

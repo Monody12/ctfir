@@ -344,27 +344,26 @@ void mod_cron(ModuleCtx& ctx) {
         for (const auto& f : list_dir(d, 200))
             files.push_back(f);
 
+    size_t followed = 0;
     for (const auto& f : files) {
+        struct stat source_stat{};
+        if (!lstat(f.c_str(), &source_stat) && S_ISDIR(source_stat.st_mode)) continue;
         ReadResult r = read_source(ctx, f, false);
         if (!r.ok) continue;
         for_each_line(r.content, [&](int no, const std::string& line) {
             std::string t = trim(line);
             if (t.empty() || t[0] == '#') return;
-            auto hits = match_tokens(t);
-            if (hits.empty()) return;
-            std::string whys;
-            for (auto& [tk, why] : hits) whys += tk + "(" + why + ") ";
-            bool severe = contains_ci(t, "stratum") || contains_ci(t, "nc -e") ||
-                          contains_ci(t, "/bin/bash -i") || contains_ci(t, "kdevtmpfsi") ||
-                          contains_ci(t, "kinsing") || contains_ci(t, "xmrig");
+            std::vector<std::string> refs = {f};
+            int risk = persistence_risk(ctx, t, refs, followed);
+            if (!risk) return;
             Finding fd;
             fd.rule_id = "LNX.PERSIST.CRON.001";
-            fd.severity = severe ? "high" : "medium";
-            fd.confidence = "medium";
-            fd.rationale = "计划任务行含可疑特征: " + whys + "——备份/运维任务可能相似，需人工核对被引用脚本";
-            fd.evidence_paths = {f};
+            fd.severity = risk >= 3 ? "high" : "medium";
+            fd.confidence = risk >= 3 ? "high" : "medium";
+            fd.rationale = "计划任务执行隐藏/临时路径或反弹/下载执行链: " + t.substr(0, 400);
+            fd.evidence_paths = refs;
             fd.object_ref = f + ":" + std::to_string(no);
-            fd.limitations = {"静态特征匹配；不执行任务；不追踪被引用脚本内容链"};
+            fd.limitations = {"只读静态分析；引用脚本最多一层/64KiB/每模块64个；路径可疑不等于恶意"};
             fd.advice_id = "ADVICE.CRON.REVIEW.001";
             ctx.add_finding(fd);
         });

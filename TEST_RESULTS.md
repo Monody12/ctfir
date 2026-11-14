@@ -707,3 +707,15 @@ Win7 已部署 `C:\ctfir-test\ctfir.exe` / `ctfir-gui.exe` 本轮产物。JW2026
 - buildinfo负例：传入artifact-version=0.8.3被拒绝；正确0.8.4元数据冒烟通过。`scan_bad_escapes` total0。
 - 原Windows工作区155文件重新逐文件比对快照，changed=[]，HEAD仍b95b53b；用户练习环境未清理、未重建。
 - 发布时在最终文档提交再过CI后创建`v0.8.4`，tag工作流会重新构建、重跑上述门禁。正式ZIP的commit/tree、大小、SHA256与根SHA256SUMS以tag产物和GitHub Release资产为权威，不复用旧包、不用自引用commit/hash写死在源码文档。
+
+
+## #45 v0.8.5 隐藏执行链与报告噪声定向回归（2026-11-14，北京时间）
+
+- 输入 HTML 实为 0.8.4 / 7.2.2，root、Kali 5.10，54 findings；CRON 模块 25/26（遗漏目录误当文件读取），SYSTEMD 102/102 已读取目标单元却无匹配。root /dev/tcp cron 已命中，伪装进程已有低置信不匹配命中；不是四项全无。
+- 根因：SUID 原仅四个标准 bin/sbin 目录；cron/systemd 令牌未覆盖隐藏脚本执行路径；argv0 先按斜杠切分损坏 [kworker/...]；普通进程标题/alternatives/lib32 路径噪声和危险 PID1 建议。
+- 只读 SSH 状态核查：当前授权 Kali 的四处目标文件不存在，root crontab 空，目标服务 inactive/无 FragmentPath，无 5555 监听，仅真实内核 kworker。保留原状；未植入或执行反弹/提权。历史报告来自另一状态/机器，不能冒称原10点通过。
+- 新 `tests/fixture_linux_hidden.py`：四发行版断网容器，SUID ELF/脚本事实、隐藏 cron/systemd、无害常驻/伪装进程、正常 curl/python/lib32 负例、非root权限缺口、finally/trap清理复扫。仅 .dockerenv 且显式 disposable 标志允许运行。
+- 最小构建/单测与 `python3 scripts/scan_bad_escapes.py` 的真实结果及最终双平台 CI 运行号将在执行后追加。此处没有把待运行项记 PASS。
+- 仍未测：真 Server 2008 R2、真实 3.10 内核；容器仅验证发行版用户态。5555 端口本身不作为后门断言；auth.log/wtmp 不一致只能是待解释异常。
+
+- 推送前最小检查：`bash scripts/build-linux.sh` exit=0，Linux 单测 **111/111**；`python3 scripts/scan_bad_escapes.py` exit=0、0处。新四发行版集成夹具交由本提交 CI 首次验证；未提前写 PASS。

@@ -617,6 +617,11 @@ DisplayAction display_action(const Finding& f) {
         a.contest_note.clear();
     }
 
+    if (starts_with(rid, "LNX.PROC.")) {
+        std::string pid = after_tok(obj, "PID ");
+        a.command = is_digits(pid) ? "ps -p " + pid + " -o pid,ppid,comm,args\nreadlink /proc/" + pid + "/exe" : "只读复核当前进程身份；不要按过期 PID 终止进程";
+        a.contest_note = "只读复核，不生成 STOP/KILL；PID 1 和系统服务尤其不能盲目终止。";
+    }
     if (a.command.empty()) a.command = from_plan(f);
 
     if (a.command.empty() && starts_with(rid, "LNX.")) {
@@ -628,7 +633,7 @@ DisplayAction display_action(const Finding& f) {
                    rid.find("NAMEMISMATCH") != std::string::npos || rid.find("PROC.MINER") != std::string::npos) {
             std::string pid = after_tok(obj, "PID ");
             if (pid.empty()) pid = "<pid>";
-            a.command = "ls -l /proc/" + pid + "/exe\nkill -STOP " + pid + "\n# 确认后 kill " + pid;
+            a.command = "ls -l /proc/" + pid + "/exe";
         } else if (rid.find("HOSTS") != std::string::npos) {
             std::string line = line_of_ref(obj);
             a.command = "sed -i '" + (line.empty() ? "Nd" : line + "d") + "' /etc/hosts";

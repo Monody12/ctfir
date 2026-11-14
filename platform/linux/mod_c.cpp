@@ -17,9 +17,12 @@ void mod_caps(ModuleCtx& ctx) {
     const char* known[] = {"ping", "mtr-packet", "traceroute6.iputils"};
     std::set<std::string> allow(known, known + sizeof(known) / sizeof(known[0]));
     int found = 0;
+    std::set<std::pair<unsigned long, unsigned long>> seen;
     for (const char* d : dirs) {
         for (const auto& p : list_dir(d, 5000)) {
             if (ctx.expired()) { ctx.note("预算截断"); goto done; }
+            struct stat st{};
+            if (stat(p.c_str(), &st) || !S_ISREG(st.st_mode) || !seen.insert({st.st_dev, st.st_ino}).second) continue;
             unsigned char buf[128];
             ssize_t n = getxattr(p.c_str(), "security.capability", buf, sizeof(buf));
             if (n <= 0) continue;

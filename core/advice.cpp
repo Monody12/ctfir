@@ -64,7 +64,7 @@ static const Advice kAdvices[] = {
 {"ADVICE.MINER.REVIEW.001", "挖矿 / 伪装进程",
  "记下 PID、命令行、exe 路径。名字叫 kworkerd 却指向 sleep，按后门处理。\n"
  "Windows：taskkill /PID <pid> /F\n"
- "Linux：kill -STOP <pid>，确认后 kill。\n"
+ "Linux：只读核验 /proc/<pid>/exe、cmdline、父进程和监听关系；不要按名称差异直接终止。\n"
  "只杀进程不够，cron、服务、启动项里拉起它的那条要一起删。"},
 
 {"ADVICE.HASH.BASELINE.001", "文件和系统命令",

@@ -54,3 +54,9 @@
 - 对象含 shell 元字符时不生成可复制动作；请以证据与手册核实，不将工具建议当作自动安全处置。
 - 包内 BUILDINFO 对应本次准确源码 commit/tree、规则包及二进制哈希；源码、旧版 ZIP 或其他版本的 CI artifact 均不能混用。
 - AD 文件枚举不跟随 NTFS reparse point/junction，防止循环和重复误报；若 SYSVOL 通过 junction 暴露，需用 `--dir` 指定真实目标路径。此轮没有真实 DC 验收。
+
+
+## v0.8.5 定向检测边界
+
+SUID 是有界目录扫描（深度4/总8000项），不是全盘；不随目录符号链接，遗漏/权限/预算见模块。Linux 脚本 SUID 通常不生效，不等同可提权 ELF。
+cron/systemd 只读跟一层 shebang 脚本（64KiB、每模块64个），不执行、不展开动态 shell，不证明 enabled 状态。普通 curl/base64/python 词不能单独判高危。进程瞬逝/PID复用与无可信包基线限制保留；端口5555本身不是恶意证明。

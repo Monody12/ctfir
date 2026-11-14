@@ -3,6 +3,7 @@
 #include "core/session.hpp"
 #include "core/evidence.hpp"
 #include "core/util.hpp"
+#include "core/lnx_heuristics.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -83,6 +84,27 @@ inline ReadResult read_source(ModuleCtx& ctx, const std::string& path, bool requ
         ctx.omitted_source(path, "error: " + r.error_detail);
     }
     return r;
+}
+
+// Follow at most eight regular script references, one level only, never execute.
+inline int persistence_risk(ModuleCtx& ctx, const std::string& text,
+                            std::vector<std::string>& references, size_t& followed) {
+    int risk = linux_command_risk(text);
+    for (const auto& p : linux_command_paths(text)) {
+        if (followed >= 64 || ctx.expired()) break;
+        if (starts_with(p, "/proc/") || starts_with(p, "/sys/") || starts_with(p, "/dev/") ||
+            p.find("/.ssh/") != std::string::npos || p == "/etc/shadow" || p == "/etc/gshadow") continue;
+        struct stat st{};
+        if (lstat(p.c_str(), &st) || !S_ISREG(st.st_mode) || st.st_size > 65536) continue;
+        std::ifstream in(p, std::ios::binary); char magic[2]{}; in.read(magic, 2);
+        if (magic[0] != '#' || magic[1] != '!') continue;
+        ++followed;
+        ReadResult r = read_source(ctx, p, false, 65536);
+        if (!r.ok) continue;
+        references.push_back(p);
+        for (const auto& line : split_lines(r.content)) risk = std::max(risk, linux_command_risk(line));
+    }
+    return risk;
 }
 
 // 目录枚举（不跟随符号链接；cap 上限）

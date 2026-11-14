@@ -10,13 +10,21 @@
 2. **离线**——代码中零网络 API；报告零外部资源，可断网打开。
 3. **如实**——PASS 只代表"声明范围内未命中"；权限不足 / 超时 / 未覆盖项全部如实列出，不充当安全结论。
 
-- **当前版本**：v0.8.4（规则包 7.2.2，2026-11-14）｜ 许可证 [MIT](LICENSE)
+- **当前版本**：v0.8.5（规则包 7.2.3，2026-11-14）｜ 许可证 [MIT](LICENSE)
 - **支持平台**：Windows 7 SP1+ x64 / Windows 10/11 x64（GUI + CLI）；Linux x86_64 静态二进制（CLI，CentOS 7 用户态已验）
 - **完整兼容矩阵**：[packaging/COMPATIBILITY.md](packaging/COMPATIBILITY.md) ｜ 已知限制：[packaging/KNOWN_LIMITATIONS.md](packaging/KNOWN_LIMITATIONS.md)
 
 ---
 
-## v0.8.4 发布验证
+## v0.8.5 定向修复
+
+- **192** 检测点，规则包 **7.2.3**；新增 `LNX.PROC.SUSPECT.001`。SUID 增加临时/隐藏区域的有界递归，cron/systemd 可识别隐藏执行路径并只读追一层脚本。
+- 修正 lib32/x32、进程标题/大小写/真实 alternatives 链接噪声，capabilities 按设备/inode 去重；无可信基线的普通 SUID/caps/authorized_keys 放调查线索，不当入侵证明。
+- Linux 进程快照不再生成 STOP/KILL 处置建议（包括 PID 1）。监听 5555 本身不是恶意证据；须关联进程、脚本和运行态。
+- 新回归：`python3 tests/fixture_linux_hidden.py /absolute/path/ctfir`；自动起四发行版断网可销毁容器，正例/正常负例/权限缺口/清理复扫。双平台 CI 仍是发布门禁；本次记录见 TEST_RESULTS #45。
+- Kali 当前状态不含用户历史报告四处植入对象；不能宣称该原始 10 点场景回扫全命中。真 Server 2008 R2 / CentOS 3.10 内核仍未测。
+
+## v0.8.4 发布验证（历史）
 
 - 当前检测点 **191**，规则包 **7.2.2**；0.8.4 源码从原 Windows 工作区完整迁移到 box，原机/练习环境不变。
 - 构建：`bash scripts/build-linux.sh`（Linux 主机默认 `out/linux`，Windows 保留 D:/ 路径）；Windows 由 GitHub Actions VS2022 `/MT` 构建。

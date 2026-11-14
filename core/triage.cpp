@@ -127,6 +127,9 @@ bool is_known_ms_activesetup(const std::string& object_ref) {
 }
 
 Bucket bucket_of(const Finding& f) {
+    if (f.rule_id == "LNX.CAPS.UNEXPECTED.001" || f.rule_id == "LNX.SSH.AUTHKEY.001" ||
+        (f.rule_id == "LNX.SUID.UNEXPECTED.001" && f.confidence == "low") ||
+        (f.rule_id == "LNX.PROC.NAMEMISMATCH.001" && f.confidence != "high")) return Bucket::Trace;
     Bucket b = bucket_of(f.rule_id);
     if (has(f.rule_id, "ACTIVESETUP") && is_known_ms_activesetup(f.object_ref))
         return Bucket::Inventory;
@@ -344,6 +347,7 @@ static const struct TitleRow { const char* id; const char* title; } kTitles[] = 
     {"LNX.BASE.CMDRECENT.001", "系统命令近期被改"},
     {"LNX.SSH.PORT.001", "sshd 非默认端口"},
     {"LNX.BASE.RECENT.001", "近期新增可执行文件"},
+    {"LNX.PROC.SUSPECT.001", "进程隐藏执行/反弹特征"},
     {"LNX.PROC.NAMEMISMATCH.001", "进程名与 exe 不符"},
     {"MID.MYSQL.LOGSHELL.001", "MySQL 日志写马"},
     {"MID.MYSQL.SLOWLOG.001", "MySQL slow log 写马"},

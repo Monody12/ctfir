@@ -3,6 +3,7 @@
 #include "core/lnx_heuristics.hpp"
 
 #include <cstring>
+#include <cerrno>
 #include <dirent.h>
 #include <map>
 #include <sys/stat.h>
@@ -13,6 +14,7 @@ namespace {
 
 // ---- L07 systemd / init.d / rc.local ----
 void mod_systemd(ModuleCtx& ctx) {
+    size_t followed = 0;
     bool systemd_present = file_exists("/etc/systemd/system") || file_exists("/run/systemd/system");
     if (systemd_present) {
         // 递归 /etc/systemd/system（深度≤3，cap 500）
@@ -36,18 +38,17 @@ void mod_systemd(ModuleCtx& ctx) {
                 for_each_line(r.content, [&](int no, const std::string& line) {
                     std::string t = trim(line);
                     if (!starts_with(t, "Exec")) return;
-                    auto hits = match_tokens(t);
-                    if (hits.empty()) return;
-                    std::string whys;
-                    for (auto& [tk, why] : hits) whys += tk + " ";
+                    std::vector<std::string> refs = {p};
+                    int risk = persistence_risk(ctx, t, refs, followed);
+                    if (!risk) return;
                     Finding f;
                     f.rule_id = "LNX.PERSIST.SYSTEMD.001";
-                    f.severity = "high";
-                    f.confidence = "medium";
-                    f.rationale = "systemd 单元 Exec 行含可疑特征: " + whys + "——自建服务属正常场景，需核对";
-                    f.evidence_paths = {p};
+                    f.severity = risk >= 3 ? "high" : "medium";
+                    f.confidence = risk >= 3 ? "high" : "medium";
+                    f.rationale = "systemd Exec 执行隐藏/临时路径或反弹/下载执行链: " + t.substr(0, 400);
+                    f.evidence_paths = refs;
                     f.object_ref = p;
-                    f.limitations = {"未读取运行态 enabled 状态；drop-in 覆盖关系仅按文件逐个检查"};
+                    f.limitations = {"未证明单元已启用；drop-in 按文件检查；脚本最多一层/64KiB/每模块64个"};
                     f.advice_id = "ADVICE.CRON.REVIEW.001";
                     ctx.add_finding(f);
                 });
@@ -150,6 +151,7 @@ void mod_proc(ModuleCtx& ctx) {
         // 仅数字目录
         const std::string base = pid_dir.substr(pid_dir.find_last_of('/') + 1);
         if (base.empty() || base[0] < '0' || base[0] > '9') continue;
+        if (base == std::to_string(getpid())) continue;
         if (++scanned > 3000) { budget_hit = true; break; }
         if ((scanned % 200) == 0 && ctx.expired()) { budget_hit = true; break; }
         // cmdline
@@ -193,6 +195,18 @@ void mod_proc(ModuleCtx& ctx) {
                 ctx.add_evidence(e);
             }
         }
+        if (!cmdline.empty() && linux_command_risk(cmdline) >= 2) {
+            Finding f;
+            f.rule_id = "LNX.PROC.SUSPECT.001";
+            f.severity = linux_command_risk(cmdline) >= 3 ? "high" : "medium";
+            f.confidence = linux_command_risk(cmdline) >= 3 ? "high" : "medium";
+            f.rationale = "运行命令含隐藏/临时执行路径或反弹 shell 证据: " + cmdline.substr(0, 400);
+            f.object_ref = "PID " + base;
+            f.evidence_paths = {pid_dir + "/cmdline", pid_dir + "/exe"};
+            f.limitations = {"单次 /proc 快照；监听端口本身不是后门证明；需关联脚本/父进程"};
+            f.advice_id = "ADVICE.MINER.REVIEW.001";
+            ctx.add_finding(f);
+        }
         if (deleted && !exe.empty()) {
             Finding f;
             f.rule_id = "LNX.PROC.DELETED.001";
@@ -214,7 +228,7 @@ void mod_proc(ModuleCtx& ctx) {
 
 // ---- L10 SUID/SGID ----
 void mod_suid(ModuleCtx& ctx) {
-    const char* dirs[] = {"/usr/bin", "/usr/sbin", "/bin", "/sbin"};
+    std::vector<std::pair<std::string, int>> dirs = {{"/usr/bin", 0}, {"/usr/sbin", 0}, {"/bin", 0}, {"/sbin", 0}, {"/var/tmp", 0}, {"/tmp", 0}, {"/dev/shm", 0}, {"/usr/local", 0}};
     const char* known[] = {
         "passwd", "sudo", "su", "mount", "umount", "ping", "chsh", "chfn",
         "newgrp", "gpasswd", "pkexec", "crontab", "at", "ssh-keysign",
@@ -225,15 +239,27 @@ void mod_suid(ModuleCtx& ctx) {
     std::set<std::string> allow(known, known + sizeof(known) / sizeof(known[0]));
     std::set<std::pair<unsigned long, unsigned long>> seen_inode;  // (dev,ino) 去重（/sbin 符号链接双列）
     size_t entries = 0;
-    for (const char* d : dirs) {
-        for (const auto& p : list_dir(d, 5000)) {
-            if (++entries > 8000) { ctx.note("枚举超 8000 项截断"); goto done; }
+    for (size_t di = 0; di < dirs.size(); ++di) {
+        const std::string d = dirs[di].first;
+        const int depth = dirs[di].second;
+        ctx.planned_source(d);
+        DIR* probe = opendir(d.c_str());
+        if (!probe) { if (errno != ENOENT) ctx.omitted_source(d, errno == EACCES ? "PERMISSION_DENIED" : "opendir failed"); else ctx.checked_source(d + " [not_found]"); continue; }
+        closedir(probe); ctx.checked_source(d);
+        bool cut = false;
+        for (const auto& p : list_dir(d, 5000, &cut)) {
+            if (ctx.expired()) { ctx.omitted_source(d, "budget"); goto done; }
             struct stat st{};
             if (lstat(p.c_str(), &st) != 0) continue;   // 不跟随符号链接
-            if (!S_ISREG(st.st_mode)) continue;
-            if (!seen_inode.insert({static_cast<unsigned long>(st.st_dev),
-                                    static_cast<unsigned long>(st.st_ino)}).second)
+            if (!S_ISDIR(st.st_mode) && !S_ISREG(st.st_mode)) continue;
+            if (!seen_inode.insert({static_cast<unsigned long>(st.st_dev), static_cast<unsigned long>(st.st_ino)}).second) continue;
+            if (++entries > 8000) { ctx.omitted_source(d, "entry budget 8000"); goto done; }
+            if (S_ISDIR(st.st_mode)) {
+                if (depth < 4) dirs.push_back({p, depth + 1});
+                else ctx.omitted_source(p, "depth limit 4");
                 continue;
+            }
+            if (!S_ISREG(st.st_mode)) continue;
             bool suid = (st.st_mode & S_ISUID) != 0;
             bool sgid = (st.st_mode & S_ISGID) != 0;
             if (!suid && !sgid) continue;
@@ -246,22 +272,27 @@ void mod_suid(ModuleCtx& ctx) {
                         std::to_string(st.st_uid) + ":" + std::to_string(st.st_gid) +
                         " mode=" + std::to_string((st.st_mode & 07777));
             ctx.add_evidence(e);
-            if (suid && !allow.count(name)) {
+            bool standard_dir = d == "/usr/bin" || d == "/usr/sbin" || d == "/bin" || d == "/sbin";
+            if (suid && (!standard_dir || !allow.count(name))) {
                 Finding f;
                 f.object_ref = p;
                 f.rule_id = "LNX.SUID.UNEXPECTED.001";
-                f.severity = "medium";
-                f.confidence = "medium";
-                f.rationale = "非常见 SUID 程序: " + p +
-                              "（发行版合法工具可能不在清单内，需人工核实）";
+                f.severity = standard_dir ? "low" : "high";
+                f.confidence = standard_dir ? "low" : "high";
+                std::ifstream in(p, std::ios::binary); char header[4]{}; in.read(header, 4);
+                bool script = header[0] == '#' && header[1] == '!';
+                f.rationale = "SUID 文件: " + p + (standard_dir ? "（无可信包基线，仅调查线索）" : "（非标准/可写区域，优先核验）") +
+                    (script ? "；脚本 shebang，Linux 通常忽略脚本 SUID，不能据此认定可提权" : "；非 shebang 文件，需以 file/哈希验证二进制身份");
                 f.evidence_paths = {p};
                 f.limitations = {"白名单为常见发行版集合；自定义合法工具会命中"};
                 f.advice_id = "ADVICE.HASH.BASELINE.001";
                 ctx.add_finding(f);
             }
         }
+        if (cut) ctx.omitted_source(d, "entry cap 5000");
     }
 done:
+    ctx.note("SUID: 标准目录及 /tmp /var/tmp /dev/shm /usr/local，深度4，总项8000；不跟随目录符号链接；非全盘");
     ctx.set_status(ModuleStatus::PASS);
 }
 

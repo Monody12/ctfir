@@ -175,7 +175,8 @@ void mod_procmismatch(ModuleCtx& ctx) {
         if (!cmd.ok || cmd.content.empty()) continue;
         std::string argv0 = cmd.content.substr(0, cmd.content.find('\0'));
         // argv[0] 通常是完整路径，取最后一段作为"声称的命令名"
-        size_t slash = argv0.find_last_of('/');
+        bool kernel_claim = argv0.front() == '[';
+        size_t slash = kernel_claim ? std::string::npos : argv0.find_last_of('/');
         std::string claimed = slash == std::string::npos ? argv0 : argv0.substr(slash + 1);
         if (claimed.empty()) continue;
         // 读 exe 符号链接（真实二进制路径）
@@ -186,11 +187,14 @@ void mod_procmismatch(ModuleCtx& ctx) {
         size_t eslash = exe.find_last_of('/');
         std::string exe_name = eslash == std::string::npos ? exe : exe.substr(eslash + 1);
         // 比较（允许常见差异：bash vs -bash, [kworker] 等）
-        if (!proc_claimed_matches_exe(claimed, exe_name)) {
+        char resolved[4096]{};
+        std::string claimed_path = !argv0.empty() && argv0[0] == '/' ? argv0 : "/usr/bin/" + claimed;
+        bool same_target = realpath(claimed_path.c_str(), resolved) && exe == resolved;
+        if (!same_target && (kernel_claim || !proc_claimed_matches_exe(claimed, exe_name))) {
             Finding f;
             f.rule_id = "LNX.PROC.NAMEMISMATCH.001";
             f.severity = "medium";
-            f.confidence = "low";
+            f.confidence = kernel_claim ? "high" : "low";
             f.rationale = "进程名与 exe 不匹配: PID " + base + " 声称 " + claimed +
                           " 但 exe 是 " + exe + "（可能是替换了进程名的后门）";
             f.object_ref = "PID " + base;

@@ -16,6 +16,11 @@ RemediationPlan plan_remediation(const Finding& f) {
     const std::string& rid = f.rule_id;
     const std::string& obj = f.object_ref;
 
+    // A report snapshot is not a safe live PID identity. Never offer process kill plans.
+    if (starts_with(rid, "LNX.PROC.")) {
+        p.reason = "只读取证；PID 可复用，名称/路径线索不授权终止进程（包括 PID 1）";
+        return p;
+    }
     // ---------- Windows 账户 ----------
     if (rid == "WIN.ACC.CUSTOM.001" || rid == "WIN.ACC.DOLLAR.001" ||
         rid == "WIN.ACC.ADMIN.001") {
@@ -224,15 +229,6 @@ RemediationPlan plan_remediation(const Finding& f) {
         p.rollback_note = "按备份的 stat 原模式 chmod 恢复";
         return p;
     }
-    // ---------- Linux 进程 ----------
-    if (rid == "LNX.PROC.MINER.001") {
-        std::string pid = after(obj, "PID ");
-        if (pid.empty()) { p.reason = "PID 已失效——请重扫后处置"; return p; }
-        p.supported = true;
-        p.steps.push_back("kill -STOP " + pid + " && sleep 1 && kill -9 " + pid);
-        p.rollback_note = "先 STOP 取证窗口再 KILL；不可逆，确认样本已取证";
-        return p;
-    }
     // ---------- SUID 权限收敛（去掉 SUID 位） ----------
     if (rid == "LNX.SUID.UNEXPECTED.001") {
         if (obj.empty()) { p.reason = "无法解析文件路径"; return p; }
@@ -240,15 +236,6 @@ RemediationPlan plan_remediation(const Finding& f) {
         p.backups.push_back("stat \"" + obj + "\"");
         p.steps.push_back("chmod u-s \"" + obj + "\"");
         p.rollback_note = "chmod u+s 恢复；仅去掉 SUID 位不删文件";
-        return p;
-    }
-    // ---------- Linux 进程从临时目录运行（终止进程） ----------
-    if (rid == "LNX.PROC.TMPDIR.001") {
-        std::string pid = after(obj, "PID ");
-        if (pid.empty()) { p.reason = "PID 已失效——请重扫后处置"; return p; }
-        p.supported = true;
-        p.steps.push_back("kill -9 " + pid);
-        p.rollback_note = "进程终止不可逆——先取证 exe 路径和哈希";
         return p;
     }
     // ---------- Linux XDG autostart ----------
@@ -295,15 +282,6 @@ RemediationPlan plan_remediation(const Finding& f) {
         return p;
     }
     // ---------- R10-R14 新规则修复白名单 ----------
-    // 进程名伪装 → kill（同 MINER 模式）
-    if (rid == "LNX.PROC.NAMEMISMATCH.001") {
-        std::string pid = after(obj, "PID ");
-        if (pid.empty()) { p.reason = "PID 已失效——请重扫后处置"; return p; }
-        p.supported = true;
-        p.steps.push_back("kill -STOP " + pid + " && sleep 1 && kill -9 " + pid);
-        p.rollback_note = "先 STOP 留取证窗口再 KILL；不可逆，确认 /proc/PID/exe 样本已取证";
-        return p;
-    }
     // SSH 非标端口 / ProxyCommand 后门 → 配置行注释（同 cron 行级模式）
     if (rid == "LNX.SSH.PORT.001" || rid == "LNX.SSH.PROXYCMD.001") {
         std::string file = obj.substr(0, obj.rfind(':'));

@@ -4,6 +4,8 @@
 
 #include <cctype>
 #include <string>
+#include <sstream>
+#include <vector>
 
 namespace ctfir {
 
@@ -42,9 +44,80 @@ inline bool ldso_path_is_unusual(const std::string& line) {
     if (t.empty() || t[0] == '#') return false;
     if (starts_with(t, "include ") || starts_with(t, "include\t")) return false;
     if (t[0] != '/') return true;
-    for (const char* dir : {"/usr/lib", "/usr/lib64", "/lib", "/lib64", "/usr/local/lib"})
+    for (const char* dir : {"/usr/lib", "/usr/lib64", "/usr/lib32", "/usr/libx32", "/lib", "/lib64", "/lib32", "/libx32", "/usr/local/lib"})
         if (t == dir || starts_with(t, std::string(dir) + "/")) return false;
     return true;
+}
+
+// Bounded static command inspection: never execute or expand shell syntax.
+inline bool linux_hidden_path(const std::string& p) {
+    size_t at = 0;
+    while ((at = p.find("/.", at)) != std::string::npos) {
+        size_t end = p.find('/', at + 1);
+        std::string part = p.substr(at + 1, end == std::string::npos ? end : end - at - 1);
+        if (part != "." && part != "..") return true;
+        at += 2;
+    }
+    return false;
+}
+inline std::vector<std::string> linux_command_paths(std::string text) {
+    if (starts_with(trim(text), "Exec")) {
+        size_t eq = text.find('=');
+        if (eq != std::string::npos) text = text.substr(eq + 1);
+    }
+    std::vector<std::string> words;
+    std::string word;
+    char quote = 0;
+    for (char c : text.substr(0, 16384)) {
+        if ((c == '\'' || c == '"') && (!quote || quote == c)) { quote = quote ? 0 : c; continue; }
+        if (!quote && (std::isspace(static_cast<unsigned char>(c)) || c == ';' || c == '|' || c == '&')) {
+            if (!word.empty()) { words.push_back(word); word.clear(); }
+            if (c == ';' || c == '|' || c == '&') words.push_back(";");
+        } else word += c;
+    }
+    if (!word.empty()) words.push_back(word);
+    size_t begin = 0;
+    if (!words.empty() && words[0][0] == '@') begin = 1;
+    else if (words.size() >= 6 && (words[0][0] == '*' || std::isdigit(static_cast<unsigned char>(words[0][0])))) begin = 5;
+    // Optional system-crontab username, but not a bare executable.
+    if (begin && begin + 1 < words.size() && words[begin].find('/') == std::string::npos &&
+        !words[begin + 1].empty() && words[begin + 1][0] == '/') ++begin;
+    std::vector<std::string> paths;
+    bool command = true, script = false;
+    for (size_t i = begin; i < words.size() && paths.size() < 8; ++i) {
+        std::string w = words[i];
+        if (w == ";") { command = true; script = false; continue; }
+        while (command && !w.empty() && (w[0] == '-' || w[0] == '+' || w[0] == '!' || w[0] == ':')) w.erase(0, 1);
+        if (w.empty()) continue;
+        if (command && w.find('=') != std::string::npos) continue;
+        bool absolute = w[0] == '/';
+        if (absolute && (command || script)) {
+            // -c payload is parsed recursively, not treated as a pathname.
+            if (w.find_first_of("\n\r") == std::string::npos) paths.push_back(w);
+        }
+        std::string base = w.substr(w.find_last_of('/') == std::string::npos ? 0 : w.find_last_of('/') + 1);
+        bool interpreter = base == "sh" || base == "bash" || base == "dash" || base == "python" ||
+                           starts_with(base, "python3") || base == "perl";
+        if (command) { command = base == "env" || base == "exec"; script = interpreter; }
+        else if (script && w[0] != '-') script = false;
+        if (i > begin && words[i - 1] == "-c") {
+            auto nested = linux_command_paths(w);
+            for (const auto& p : nested) if (paths.size() < 8) paths.push_back(p);
+        }
+    }
+    return paths;
+}
+inline int linux_command_risk(const std::string& text) {
+    std::string t = trim(text);
+    if (t.empty() || t[0] == '#') return 0;
+    if (contains_ci(t, "/dev/tcp/") || contains_ci(t, "stratum+") || contains_ci(t, "xmrig") ||
+        ((contains_ci(t, "nc ") || contains_ci(t, "ncat ") || contains_ci(t, "netcat ")) &&
+         (contains_ci(t, " -e ") || contains_ci(t, " --exec ") || contains_ci(t, " -c /bin/"))) ||
+        ((contains_ci(t, "curl ") || contains_ci(t, "wget ") || contains_ci(t, "base64 -d")) &&
+         (contains_ci(t, "| sh") || contains_ci(t, "|sh") || contains_ci(t, "| bash") || contains_ci(t, "|bash")))) return 3;
+    for (const auto& p : linux_command_paths(t))
+        if (linux_hidden_path(p) || starts_with(p, "/tmp/") || starts_with(p, "/var/tmp/") || starts_with(p, "/dev/shm/")) return 2;
+    return 0; // curl/base64/python words alone are not malicious evidence.
 }
 
 // Dirty Pipe CVE-2022-0847：仅 5.8–5.16.11
@@ -82,7 +155,11 @@ inline bool cap_name_expected(const std::string& name) {
 // pipewire-pulse / pipewire、systemd-xxx / systemd 视为包装名，不是伪装
 inline bool proc_claimed_matches_exe(const std::string& claimed, const std::string& exe_name) {
     if (claimed.empty() || exe_name.empty()) return true;
-    if (claimed == exe_name || claimed == "-" + exe_name) return true;
+    if (claimed[0] == '[') return false;
+    if (to_lower(claimed) == to_lower(exe_name) || claimed == "-" + exe_name) return true;
+    if ((claimed == "init" || claimed == "(sd-pam)") && exe_name == "systemd") return true;
+    if (claimed == "systemd-udevd" && exe_name == "udevadm") return true;
+    if (starts_with(claimed, exe_name + " ") || starts_with(claimed, exe_name + ":")) return true;
     if (claimed.size() > exe_name.size() &&
         claimed.compare(0, exe_name.size(), exe_name) == 0 &&
         (claimed[exe_name.size()] == '-' || claimed[exe_name.size()] == '.'))

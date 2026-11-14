@@ -3,7 +3,14 @@
 状态：NOT_TESTED / BUILT_NOT_RUN / PASSED / FAILED / DEFERRED / NOT_IMPLEMENTED / AUTOMATED_SUBSTITUTE
 规则：未测格不写 PASSED；无基线不下完整性结论；每格有证据指针（TEST_RESULTS.md #编号）。无法提供真实 OS/内核时用 AUTOMATED_SUBSTITUTE（写清技术原因与替代），不再空标 manual。
 
-## v0.8.4 发布门禁（2026-11-14，TEST_RESULTS #44）
+## v0.8.5 定向回归（TEST_RESULTS #45）
+
+- 工具 **0.8.5** / 规则包 **7.2.3** / 检测点 **192**。新增 `LNX.PROC.SUSPECT.001`，扩展 SUID/CRON/SYSTEMD/NAMEMISMATCH，修正 LDSO，CAPS inode 去重与调查线索分流。
+- 有界范围：SUID 标准目录及 /tmp /var/tmp /dev/shm /usr/local，深度4/8000项/不追目录链接；非全盘，权限/预算遗漏必须可见。脚本 SUID 仅报权限事实，Linux 通常忽略脚本 SUID。
+- `tests/fixture_linux_hidden.py` 接入 CI 打包门禁，四发行版正/负/非root权限/清理复扫；测试数字必须以本次 CI 与 #45 为准，不能复用下方历史数字。
+- Kali 原始植入对象当前不存在；本轮只读状态核查与新二进制回扫不能替代原 10 点植入态验证。真 2008R2/3.10 内核限制保留。
+
+## v0.8.4 发布门禁（历史）（2026-11-14，TEST_RESULTS #44）
 
 - 工具 **0.8.4** / 规则包 **7.2.2** / 检测点 **191**。新增 XINETD/INITD 已纳入高频断言；下方旧版本数字为历史证据，不是本轮结果。
 - Linux 最终 **105/105**（box与严格CI均通过）；含 Dirty Pipe stable 补丁边界、ld.so 目录前缀、SYSVOL普通脚本负例、动作命令注入拒绝回归。最终证据见 #44 与对应提交CI。
