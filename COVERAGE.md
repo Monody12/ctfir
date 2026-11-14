@@ -6,9 +6,9 @@
 ## v0.8.4 发布门禁（2026-11-14，TEST_RESULTS #44）
 
 - 工具 **0.8.4** / 规则包 **7.2.2** / 检测点 **191**。新增 XINETD/INITD 已纳入高频断言；下方旧版本数字为历史证据，不是本轮结果。
-- box Alpine musl 首轮单测 102/102；补 Dirty Pipe stable 补丁边界、ld.so 目录前缀边界后 104/104。动作命令注入防护随后增加回归，最终结果见 #44 与本提交 CI（未执行不写 PASS）。
+- Linux 最终 **105/105**（box与严格CI均通过）；含 Dirty Pipe stable 补丁边界、ld.so 目录前缀、SYSVOL普通脚本负例、动作命令注入拒绝回归。最终证据见 #44 与对应提交CI。
 - box Linux alpine:3.20 / centos:7 / debian:8 / ubuntu:16.04 四套基础夹具各 **43/43**；hidepid PASS；CentOS 高频 **59/59**，容器 EXIT trap 自动销毁。最终源码在 CI 再跑相同门禁。
-- Windows 只使用 GitHub-hosted 可销毁 runner：单测、基础 fixture_win（历史 29 项，数字以当次日志为准）、独立高频 16 项及 finally 精确还原（不宣称重跑过 Win7 33 项）。
+- Windows GitHub-hosted Server 2022：**109/109** 单测、基础 fixture_win **29/29**（System7045 + Security4697 + 可写路径强断言）、独立高频 **16/16**、finally精确还原、GUI `window_created=1 modules=31`，严格CI `43600451232`。不宣称重跑过 Win7 33 项。
 - 真实 Server 2008 R2 与 CentOS 3.10 内核仍未实测；Windows 新测试宿主为 Server 2022 GHA，不冒充 Win7/域控真机。
 
 ## v0.7.0 展示层（2026-11-12，详见 TEST_RESULTS #41）

@@ -2,7 +2,8 @@
 
 - 当前版本：**0.8.4** / 规则包 **7.2.2** / 检测点 **191**。
 - 发布准备在 box 进行；Windows 原工作区和 JW2026/exam-hf 待练环境均未修改。
-- 当前真实验证见 TEST_RESULTS **#44**；Windows/Linux CI 的打包前强制夹具门禁通过后才允许创建 v0.8.4 tag/正式 Release。
+- 发布门禁全绿（TEST_RESULTS **#44**）：Win 单测 109/109 + 基础夹具29/29 + 高频16/16 + GUI自检；Linux 单测105/105 + 四发行版各43/43 + 高频59/59 + hidepid。严格CI：`https://github.com/Monody12/ctfir/actions/runs/43600451232`。
+- 正式发布 tag：`v0.8.4`；最终提交与包的准确映射以 BUILDINFO.source_commit 和对应 tag CI 为准。发布操作仍必须在最终文档提交CI通过后进行，不覆盖现有tag/资产。
 - 旧 STATUS 的 Win 106/Linux 102/Win7 33 HIT 摘要仅作为迁移前历史声明，不充当本轮可复核日志。
 - 产物由准确提交的 CI 生成，BUILDINFO 含 commit/tree/规则版本/规则源码摘要/二进制 SHA256；禁止用旧 ci-pkg 或旧 ZIP 冒充本版。
 - 本轮源码快照 SHA256：`f5b5e846fb5570fa563c8ee4818ca929f2b3b8dc3da930b38d365e7c77b582fa`（155 文件，基线 b95b53b）。

@@ -697,3 +697,13 @@ Win7 已部署 `C:\ctfir-test\ctfir.exe` / `ctfir-gui.exe` 本轮产物。JW2026
 - Windows 高频 15/16：勒索文件名带 ctfir 被既有规则主动忽略，fixture 失败而非工具编译失败；finally 清理仍 verified。修正为本次自有 `exam-marker-*` 文件（仍逐项备份/还原），不放宽断言。
 - 同一日志发现 UEV 普通 Scripts 被误判 SYSVOL，且 ProgramData junction 递归产生重复。安全修正：SYSVOL/Scripts 必须位于 SYSVOL/Policies/NETLOGON 上下文，AD walker 不跟随 reparse point；增加普通 UEV 路径负例。
 - 强化基础 Windows 门禁：4697、System7045 与可写路径启发式必须命中；auditpol 备份/恢复和清理异常不再被软跳过。另加入 GUI window_created 自检。
+
+### 严格远端 CI 全绿（北京时间 2026-11-14 21:39）
+
+- 源码提交：`53f8810b4bffd1b5da70bb872c64c1b9fb393abc`；CI：<https://github.com/Monody12/ctfir/actions/runs/43600451232>，Windows/Linux jobs 均 **success**。
+- Windows VS2022 `/MT`：**109/109** 单测；基础夹具 **29/29**（强制 System7045、可写路径、Security4697；auditpol还原；服务删除；清理复扫）；高频 **16/16** 且 `cleanup=verified`；GUI **window_created=1 modules=31**；CLI version=0.8.4。三项 Windows fixture/GUI 命令均退出码0。
+- Linux Alpine musl：**105/105** 单测；alpine:3.20 / centos:7 / debian:8 / ubuntu:16.04 各 **43/43**；L39 hidepid PASS；CentOS独立高频 **59/59**，EXIT trap销毁容器；全部退出码0。
+- 两个CI ZIP已下载到box并核验：BUILDINFO.version=0.8.4，rule_pack=7.2.2，source_commit=53f8810...，source_dirty=false，binary_sha256逐个与包内实际字节一致；两端规则源码摘要相同（`b5dd690547e644f54e8bbcf30582585aceccb0e0546cb0fa0b0b95c4edc636c5`）。这些带commit后缀的检查包不冒充正式tag包。
+- buildinfo负例：传入artifact-version=0.8.3被拒绝；正确0.8.4元数据冒烟通过。`scan_bad_escapes` total0。
+- 原Windows工作区155文件重新逐文件比对快照，changed=[]，HEAD仍b95b53b；用户练习环境未清理、未重建。
+- 发布时在最终文档提交再过CI后创建`v0.8.4`，tag工作流会重新构建、重跑上述门禁。正式ZIP的commit/tree、大小、SHA256与根SHA256SUMS以tag产物和GitHub Release资产为权威，不复用旧包、不用自引用commit/hash写死在源码文档。
