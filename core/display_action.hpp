@@ -1,3 +1,4 @@
+// 0.8.6 CURRENT POLICY: empty mutation allowlist; legacy fields are ABI/data only, never authorization.
 #pragma once
 // 展示用处置命令：只生成文本，不执行。与 ADR-009 执行白名单分离。
 #include "model.hpp"

@@ -8,7 +8,7 @@
 namespace ctfir {
 
 constexpr int kSchemaVersion = 1;
-constexpr const char* kToolVersion = "0.8.5";
+constexpr const char* kToolVersion = "0.8.6";
 
 struct Evidence {
     std::string evidence_id;
@@ -75,7 +75,7 @@ struct ScanSession {
     int schema_version = kSchemaVersion;
     std::string session_id;
     std::string tool_version = kToolVersion;
-    std::string rule_pack_version = "7.2.3";
+    std::string rule_pack_version = "7.2.4";
     std::string os_name, os_version, os_arch, privilege;
     std::string profile = "ctf";
     std::string started_utc, ended_utc;

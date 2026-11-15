@@ -102,168 +102,17 @@ CTFIR_TEST(triage_exam_order_web_before_harden) {
 }
 
 CTFIR_TEST(display_action_filled_commands) {
-    auto d = display_action(mk("WIN.ACC.DOLLAR.001", "NetUserEnum:ctfir-marker$", "medium",
-                               "存在 $ 账户", "ADVICE.ACC.REVIEW.001"));
-    CHECK(d.command.find("ctfir-marker$") != std::string::npos);
-    CHECK(d.command.find("<账户名>") == std::string::npos);
-    CHECK(d.command.find("net user") != std::string::npos);
-
-    auto ifeo = display_action(mk("WIN.AUTORUN.IFEO.001", "IFEO\\ctfir-marker-ifeo.exe"));
-    CHECK(ifeo.command.find("ctfir-marker-ifeo.exe") != std::string::npos);
-    CHECK(ifeo.command.find("Debugger") != std::string::npos);
-    CHECK(!ifeo.contest_note.empty());
-
-    auto ads = display_action(mk("WIN.FILES.ADS.001",
-        "C:\\Users\\Administrator\\Desktop\\note.txt:hidden.exe:$DATA"));
-    CHECK(ads.command.find("powershell") == std::string::npos);
-    CHECK(ads.command.find("del ") != std::string::npos);
-    CHECK(ads.command.find("hidden.exe") != std::string::npos);
-
-    auto gpp = display_action(mk("WIN.AD.GPP.CPASSWORD.001",
-                                 "C:\\Windows\\SYSVOL\\sysvol\\ctfir.local\\Policies\\x\\Groups.xml"));
-    CHECK(gpp.command.find("del /f") != std::string::npos);
-    CHECK(gpp.command.find("Groups.xml") != std::string::npos);
-
-    auto wdigest = display_action(mk("WIN.BASE.WDIGEST.001", "WDigest\\UseLogonCredential"));
-    CHECK(wdigest.command.find("UseLogonCredential") != std::string::npos);
-    CHECK(wdigest.command.find("/d 0") != std::string::npos);
-
-    auto auto_logon = display_action(mk("WIN.BASE.AUTOLOGON.001", "Winlogon\\AutoAdminLogon"));
-    CHECK(auto_logon.command.find("AutoAdminLogon") != std::string::npos);
-    CHECK(auto_logon.command.find("DefaultPassword") != std::string::npos);
-
-    Finding sh = mk("WIN.SHARE.NONDEFAULT.001", "Shares", "low",
-                    "非默认共享存在:\nctfir-marker \xE2\x86\x92 C:\\Windows\\Temp\\ctfir-marker-share");
-    auto share = display_action(sh);
-    CHECK(share.command.find("ctfir-marker") != std::string::npos);
-    CHECK(share.command.find("net share") != std::string::npos);
-
-    auto pp = display_action(mk("WIN.PORTPROXY.001", "PortProxy\\v4tov4\\tcp\\0.0.0.0/13389"));
-    CHECK(pp.command.find("netsh") != std::string::npos);
-    CHECK(pp.command.find("13389") != std::string::npos);
-    CHECK(pp.command.find("0.0.0.0") != std::string::npos);
-
-    auto start = display_action(mk("WIN.AUTORUN.SUSPECT.001",
-        "C:\\Users\\Administrator\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\ctfir-marker.vbs"));
-    CHECK(start.command.find("del /f") != std::string::npos);
-    CHECK(start.command.find("ctfir-marker.vbs") != std::string::npos);
-
-    Finding cron;
-    cron.rule_id = "LNX.PERSIST.CRON.001";
-    cron.object_ref = "/etc/crontab:12";
-    cron.severity = "high";
-    auto c = display_action(cron);
-    CHECK(c.command.find("/etc/crontab") != std::string::npos);
-    CHECK(c.command.find("12") != std::string::npos);
-    CHECK(c.command.find("sed") != std::string::npos);
-
-    Finding uid0 = mk("LNX.ACC.UID0.001", "/etc/passwd:ctfir-marker", "high");
-    auto u0 = display_action(uid0);
-    CHECK(u0.command.find("ctfir-marker") != std::string::npos);
-    CHECK(u0.command.find("usermod") != std::string::npos);
-    CHECK(u0.command.find("27") == std::string::npos);
-
-    Finding sudoers = mk("LNX.ACC.SUDOERS.001", "/etc/sudoers.d/ctfir-marker:1", "medium");
-    auto su = display_action(sudoers);
-    CHECK(su.command.find("rm -f") != std::string::npos);
-    CHECK(su.command.find("/etc/sudoers.d/ctfir-marker") != std::string::npos);
-
-    Finding sshc = mk("LNX.SSH.CONFIG.001", "/etc/ssh/sshd_config:146", "low");
-    auto sc = display_action(sshc);
-    CHECK(sc.command.find("PermitRootLogin") != std::string::npos);
-    CHECK(sc.command.find("sed") != std::string::npos);
-
-    auto inv = display_action(mk("WIN.ACC.INVENTORY.001", "NetUserEnum", "info"));
-    CHECK(inv.command.find("无需删除") != std::string::npos);
-
-    auto appinit = display_action(mk("WIN.AUTORUN.APPINIT.001", "Windows\\AppInit_DLLs"));
-    CHECK(appinit.command.find("AppInit_DLLs") != std::string::npos);
-    CHECK(appinit.command.find("打开") == std::string::npos);
-
-    auto run = display_action(mk("WIN.AUTORUN.SUSPECT.001", "HKLM\\...\\Run(64)\\ctfir-marker"));
-    CHECK(run.command.find("reg delete") != std::string::npos);
-    CHECK(run.command.find("ctfir-marker") != std::string::npos);
-
-    auto svc = display_action(mk("WIN.SVC.SUSPECT.001", "Services\\ctfir-marker-WinUpdate"));
-    CHECK(svc.command.find("sc delete") != std::string::npos);
-    CHECK(svc.command.find("ctfir-marker-WinUpdate") != std::string::npos);
-
-    auto task = display_action(mk("WIN.TASK.SUSPECT.001", "Task\\ctfir-marker-sync"));
-    CHECK(task.command.find("schtasks") != std::string::npos);
-    CHECK(task.command.find("ctfir-marker-sync") != std::string::npos);
-
-    auto psh = display_action(mk("WIN.TRACE.PSHIST.001",
-        "C:\\Users\\Administrator\\AppData\\Roaming\\Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt:1"));
-    CHECK(psh.command.find("打开") == std::string::npos);
-    CHECK(psh.command.find("ConsoleHost_history") != std::string::npos);
-
-    Finding hosts_l = mk("LNX.HOSTS.MAP.001", "/etc/hosts:8", "low", "r", "ADVICE.HOSTS.REVIEW.001");
-    auto hl = display_action(hosts_l);
-    CHECK(hl.command.find("sed") != std::string::npos);
-    CHECK(hl.command.find("flushdns") == std::string::npos);
-    std::string ha = instantiate_advice_body(hosts_l);
-    CHECK(ha.find("flushdns") == std::string::npos);
-    CHECK(ha.find("127.0.1.1") != std::string::npos);
-
-    Finding hosts_w = mk("WIN.HOSTS.MAP.001",
-                         "C:\\Windows\\System32\\drivers\\etc\\hosts:25", "low", "r",
-                         "ADVICE.HOSTS.REVIEW.001");
-    auto hw = display_action(hosts_w);
-    CHECK(hw.command.find("flushdns") != std::string::npos);
-    std::string hwa = instantiate_advice_body(hosts_w);
-    CHECK(hwa.find("flushdns") != std::string::npos);
-    CHECK(hwa.find("127.0.1.1") == std::string::npos);
-
-    Finding tools = mk("WIN.TOOLS.ARTIFACT.001", "C:\\Users\\Administrator\\Desktop\\fscan.exe",
-                       "medium", "r", "ADVICE.TOOLS.REVIEW.001");
-    std::string ta = instantiate_advice_body(tools);
-    CHECK(ta.find("挖矿") == std::string::npos);
-    CHECK(ta.find("fscan") != std::string::npos || ta.find("工具") != std::string::npos);
-
-    Finding inv_acc = mk("WIN.ACC.INVENTORY.001", "NetUserEnum", "info", "r", "ADVICE.ACC.REVIEW.001");
-    std::string ia = instantiate_advice_body(inv_acc);
-    CHECK(ia.find("NetUserEnum 看组") == std::string::npos);
-    CHECK(ia.find("<账户名>") == std::string::npos);
-    CHECK(ia.find("<用户名>") == std::string::npos);
-
-    Finding hashw = mk("WIN.FILES.BASELINE.001", "C:\\Windows\\System32\\netstat.exe",
-                       "medium", "r", "ADVICE.HASH.BASELINE.001");
-    std::string hb = instantiate_advice_body(hashw);
-    CHECK(hb.find("rpm") == std::string::npos);
-    CHECK(hb.find("del") != std::string::npos || hb.find("copy") != std::string::npos);
-
-    Finding hashl = mk("LNX.BASE.CMDSIZE.001", "/usr/bin/ls", "medium", "r",
-                       "ADVICE.HASH.BASELINE.001");
-    std::string hbl = instantiate_advice_body(hashl);
-    CHECK(hbl.find("rpm") != std::string::npos);
-
-    auto te = display_action(mk("WIN.FILES.TEMPEXE.001", "C:\\Users\\Public\\evil.svc.exe"));
-    CHECK(te.command.find("del") != std::string::npos);
-    CHECK(te.command.find("无需删除") == std::string::npos);
-
-    Finding evc = mk("WIN.EVT.ACC.CREATE.001", "Security 4720:ctfir-marker$", "medium", "r",
-                     "ADVICE.EVENTLOG.REVIEW.001");
-    std::string eva = instantiate_advice_body(evc);
-    CHECK(eva.find("<账户名>") == std::string::npos);
-    CHECK(eva.find("可疑账户") == std::string::npos);
-
-    auto gid = display_action(mk("LNX.ACC.GID0.001", "/etc/group:ctfir-marker-g"));
-    CHECK(gid.command.find("ctfir-marker-g") != std::string::npos);
-    CHECK(gid.command.find("用户名") == std::string::npos);
-
-    Finding sshlog = mk("LNX.PERSIST.SSHLOG.001", "/tmp/.sshlog", "high", "r",
-                        "ADVICE.TOOLS.REVIEW.001");
-    std::string sla = instantiate_advice_body(sshlog);
-    CHECK(sla.find("可疑账户") == std::string::npos);
-    CHECK(sla.find("sshlog") != std::string::npos || sla.find("删") != std::string::npos);
-
-    auto pwdmax = display_action(mk("LNX.BASE.PWDMAX.001", "/etc/login.defs"));
-    CHECK(pwdmax.command.find("PASS_MAX_DAYS") != std::string::npos);
-    CHECK(pwdmax.command.find("打开") == std::string::npos);
-
-    auto blink = display_action(mk("LNX.WEB.BLACKLINK.001", "/var/www/html/index.php"));
-    CHECK(blink.command.find("index.php") != std::string::npos);
-    CHECK(blink.command.find("quarantine") == std::string::npos);
+    auto d=display_action(mk("WIN.ACC.DOLLAR.001","NetUserEnum:ctfir-marker$"));
+    CHECK(d.command.find("net user")!=std::string::npos);
+    CHECK(d.command.find("ctfir-marker$")!=std::string::npos);
+    auto a=display_action(mk("LNX.ACC.UID0.001","/etc/passwd:aihelp"));
+    CHECK(a.command.find("getent passwd")!=std::string::npos);
+    CHECK(a.command.find("aihelp")!=std::string::npos);
+    CHECK(a.command.find("usermod")==std::string::npos);
+    auto timer=display_action(mk("LNX.TIMER.FACT.001","/etc/systemd/system/legal.timer"));
+    CHECK(timer.command.find("systemctl cat")!=std::string::npos);
+    CHECK(timer.command.find("disable")==std::string::npos);
+    CHECK(timer.command.find("stop")==std::string::npos);
 }
 
 CTFIR_TEST(instantiate_advice_replaces_placeholder) {
@@ -310,10 +159,10 @@ CTFIR_TEST(html_checklist_and_xss) {
     CHECK(html.find("团队综合") == std::string::npos);
     CHECK(html.find("个人防护") == std::string::npos);
     CHECK(html.find("id=\"cat\"") != std::string::npos);
-    CHECK(html.find("1.先清") != std::string::npos);
+    CHECK(html.find("1.复核") != std::string::npos);
     CHECK(html.find("怎么处理") != std::string::npos);
     CHECK(html.find("决赛") == std::string::npos);
-    CHECK(html.find("只读") == std::string::npos);
+    CHECK(html.find("只读") != std::string::npos);
 }
 
 CTFIR_TEST(display_action_untrusted_object_no_shell_injection) {
@@ -348,4 +197,53 @@ CTFIR_TEST(linux_unverified_privilege_facts_are_not_cleanup_orders) {
     CHECK(display_action(f).command.find("chmod") == std::string::npos);
     f.confidence = "high"; CHECK(bucket_of(f) == Bucket::Clear);
     f.rule_id = "LNX.CAPS.UNEXPECTED.001"; CHECK(bucket_of(f) == Bucket::Trace);
+}
+
+#include "core/fixengine.hpp"
+#include "core/safety_rule_catalog.hpp"
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <chrono>
+#include <iostream>
+
+CTFIR_TEST(all_referenced_rules_have_no_mutation_plan_or_generated_actions) {
+    for (const char* rid:kSafetyRuleCatalog) {
+        auto f=mk(rid,"/etc/ctfir-marker.conf:1");
+        auto p=plan_remediation(f);
+        CHECK(!p.supported); CHECK(p.steps.empty()); CHECK(p.backups.empty()); CHECK(p.native_ops.empty());
+        auto text=display_action(f).command+instantiate_advice(f);
+        for(const char* dangerous:{"userdel", "usermod", "pkill", "killall", "kill -", "passwd -l", "sed -i", "rm -", "disable --now", "systemctl stop", "crontab -r", "taskkill", "sc delete", "reg delete"})
+            CHECK(text.find(dangerous)==std::string::npos);
+        FixContext fx; fx.assume_yes=true;
+        CHECK(!run_remediation(f,p,fx)); CHECK(fx.executed==0);
+    }
+}
+CTFIR_TEST(forged_legacy_unknown_and_mixed_plans_never_execute_even_yes) {
+    namespace fs=std::filesystem;
+    auto folder=fs::temp_directory_path()/("ctfir-marker-safety-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    fs::create_directories(folder);
+    auto canary=folder/"canary.txt";{std::ofstream out(canary);out<<"KEEP";}
+    auto input_backup=std::cin.rdbuf();
+    for(const char* input:{"", "\n", "n\n", "no\n", "yes\n", "y\n", "Y\n"}) {
+        std::istringstream stream(input);std::cin.rdbuf(stream.rdbuf());std::cin.clear();
+        for(bool yes:{false,true}) for(bool dry:{false,true}) {
+            RemediationPlan p; p.supported=true;
+            p.steps={"__LNX_DISABLE_UID0__","__LNX_DELETE_UID0__","UNKNOWN_ACTION","echo CHANGED > \""+canary.string()+"\""};
+            p.backups={"echo CHANGED > \""+canary.string()+"\""};
+            p.native_ops={"unknown:action","quarantine:"+canary.string(),"linux_comment_line:"+canary.string()+":1"};
+            FixContext fx;fx.assume_yes=yes;fx.dry_run=dry;fx.session_dir=folder.string();fx.backup_dir=(folder/"backup").string();
+            CHECK(!run_remediation(mk("LNX.ACC.UID0.001","/etc/passwd:aihelp"),p,fx));
+            CHECK(fx.executed==0);CHECK(!fs::exists(folder/"backup"));CHECK(!fs::exists(folder/"fix-journal.jsonl"));
+            std::ifstream in(canary);std::string content;in>>content;CHECK(content=="KEEP");
+        }
+    }
+    std::cin.rdbuf(input_backup);std::cin.clear();fs::remove(canary);fs::remove(folder);
+}
+CTFIR_TEST(protected_root_duplicate_uid_and_legitimate_timer_are_preview_only) {
+    for(const char* rid:{"LNX.ACC.UID0.001","LNX.ACC.DUPUID.001","LNX.BASE.WEAKPWD.001","LNX.TIMER.FACT.001","LNX.PERSIST.CRON.001","LNX.PERSIST.SYSTEMD.001","UNKNOWN.ACTION.999"}) {
+        auto f=mk(rid,"/etc/passwd:root"); CHECK(!plan_remediation(f).supported);
+        CHECK(display_action(f).command.find("passwd -")==std::string::npos);
+    }
+    auto f=mk("LNX.ACC.UID0.001","/etc/passwd:aihelp");CHECK(display_action(f).contest_note.find("NSS")!=std::string::npos);
 }

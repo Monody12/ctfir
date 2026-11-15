@@ -1,3 +1,5 @@
+> **0.8.6 安全告警与当前策略（2026-11-15，北京时间）**：旧版 fix 与旧处置建议不再有效。自动修改白名单现为空，所有平台仅扫描/报告/只读预览；旧plan、--yes、--all、未知动作均不能执行修改。下方旧版“修复成功/白名单/一键删除”等记录是历史，不是当前操作指引。不得修改题目保护的root密码/SSH公钥，不能按共享UID终止进程或递归删除home。
+
 # COVERAGE — 平台×模块×权限×来源台账
 
 状态：NOT_TESTED / BUILT_NOT_RUN / PASSED / FAILED / DEFERRED / NOT_IMPLEMENTED / AUTOMATED_SUBSTITUTE

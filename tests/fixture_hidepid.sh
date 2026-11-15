@@ -1,5 +1,5 @@
 #!/bin/sh
-# L39 hidepid=2：在特权容器内把 /proc 以 hidepid=2 重新挂上，用 nobody 扫描，
+# L39 hidepid=2：只允许非特权容器；尝试在独立容器内把 /proc 以 hidepid=2 重新挂上，用 nobody 扫描，
 # 期望模块对不可见 /proc 条目报 PERMISSION_DENIED（而不是假装 PASS）。
 # 若内核/命名空间不允许 remount（Docker 默认非特权或 procfs 限制），如实记录技术原因并退出 0 带 SKIP。
 BIN="$1"

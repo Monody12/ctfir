@@ -7,6 +7,7 @@ if [ "$PLATFORM" = windows-x64 ]; then
   PYTHON=python
   export CTFIR_BIN="$BIN"
   "$PYTHON" scripts/scan_bad_escapes.py
+  "$PYTHON" tests/test_safety_cli.py "$BIN"
   "$PYTHON" tests/fixture_win.py
   "$PYTHON" tests/practice/exam-hf/run_windows.py "$BIN"
   "$BIN" version
@@ -14,6 +15,7 @@ if [ "$PLATFORM" = windows-x64 ]; then
 else
   python3 scripts/scan_bad_escapes.py
   BIN=$(realpath "$BIN")
+  python3 tests/test_safety_cli.py "$BIN"
   mkdir -p out/release-checks
   for image in alpine:3.20 centos:7 debian:8 ubuntu:16.04; do
     # Pull is test provisioning only. Fixture execution has no network.
@@ -21,7 +23,7 @@ else
     docker run --rm --network none -v "$BIN:/opt/ctfir:ro" \
       -v "$PWD/tests/fixture_linux.sh:/fx.sh:ro" "$image" sh /fx.sh /opt/ctfir
   done
-  docker run --rm --network none --privileged -v "$BIN:/opt/ctfir:ro" \
+  docker run --rm --network none -v "$BIN:/opt/ctfir:ro" \
     -v "$PWD/tests/fixture_hidepid.sh:/fx.sh:ro" alpine:3.20 sh /fx.sh /opt/ctfir
   CTFIR_TEST_BUILDER=ctfir-builder:ci python3 tests/fixture_linux_hidden.py "$BIN"
   bash tests/practice/exam-hf/run-linux.sh "$BIN"

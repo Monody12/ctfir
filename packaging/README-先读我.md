@@ -15,12 +15,12 @@
 1. 复制整个目录到**目标机本地**（不要在共享盘直接运行）。
 2. 核对 `SHA256SUMS`（`certutil -hashfile ctfir.exe SHA256`）。
 3. 双击 `ctfir-gui.exe` → 选择输出目录 → 「开始只读扫描」。
-   默认视图把账户清单等事实项藏起来，先看「立刻清」；切「全部」找回。
+   默认视图把账户清单等事实项藏起来，先看「重点复核」；切「全部」找回。
    无管理员权限也能运行：受限模块会如实标注 PERMISSION_DENIED。
 4. 打开输出目录中 `report.html`：顶部是处置清单（中文标题 + 一条命令）。
    个人赛/团队赛主机侧都跑全量；Linux 用 `--profile full`。
 
-命令行：`ctfir.exe scan --out C:\ctfir-out`；`ctfir.exe actions --session <目录> --bucket clear`（打印立刻清命令，不执行）；
+命令行：`ctfir.exe scan --out C:\ctfir-out`；`ctfir.exe actions --session <目录> --bucket clear`（打印重点复核命令，不执行）；
 `ctfir.exe explain --session <目录> --finding <规则ID>`；`ctfir.exe report --session <目录> --redact`。
 GUI **没有**修复按钮，也不做 360/SFC 一键系统修复。
 

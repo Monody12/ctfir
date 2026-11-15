@@ -1,3 +1,5 @@
+> **0.8.6 安全告警与当前策略（2026-11-15，北京时间）**：旧版 fix 与旧处置建议不再有效。自动修改白名单现为空，所有平台仅扫描/报告/只读预览；旧plan、--yes、--all、未知动作均不能执行修改。下方旧版“修复成功/白名单/一键删除”等记录是历史，不是当前操作指引。不得修改题目保护的root密码/SSH公钥，不能按共享UID终止进程或递归删除home。
+
 # ctfir — 离线 CTF 应急响应助手
 
 > 只读扫描 · 中文解释 · 证据留痕 · 六步处置手册 · 目标机零运行时依赖
@@ -6,11 +8,11 @@
 
 三条不可协商的红线：
 
-1. **只读为主**——默认扫描不修改目标机；v0.5 起可选受控 `fix`（白名单规则、需确认、先备份、支持 dry-run），默认不执行。
+1. **只读为主**——默认扫描不修改目标机；v0.8.6 撤销全部自动修改能力；`fix/apply/repair` 无条件拒绝，`--yes` 不能绕过。
 2. **离线**——代码中零网络 API；报告零外部资源，可断网打开。
 3. **如实**——PASS 只代表"声明范围内未命中"；权限不足 / 超时 / 未覆盖项全部如实列出，不充当安全结论。
 
-- **当前版本**：v0.8.5（规则包 7.2.3，2026-11-14）｜ 许可证 [MIT](LICENSE)
+- **当前版本**：v0.8.6（规则包 7.2.4，2026-11-15）｜ 许可证 [MIT](LICENSE)
 - **支持平台**：Windows 7 SP1+ x64 / Windows 10/11 x64（GUI + CLI）；Linux x86_64 静态二进制（CLI，CentOS 7 用户态已验）
 - **完整兼容矩阵**：[packaging/COMPATIBILITY.md](packaging/COMPATIBILITY.md) ｜ 已知限制：[packaging/KNOWN_LIMITATIONS.md](packaging/KNOWN_LIMITATIONS.md)
 
@@ -46,7 +48,7 @@
 
 1. 顶栏显示系统版本 / 权限 / 只读标识；窗口可缩放。
 2. 选择输出目录 → 「开始只读扫描」。GUI **始终全量扫描**（含 Web/日志/中间件，团队赛不要用 quick）。
-3. 默认「个人防护」视图：立刻清 / 再加固 / 溯源在前，账户清单等事实项默认隐藏，切「全部」找回。
+3. 默认「个人防护」视图：重点复核 / 再加固 / 溯源在前，账户清单等事实项默认隐藏，切「全部」找回。
 4. 列：优先级、风险、中文标题、对象、一条已填对象的命令。点列头排序；「复制命令」只复制文本，**没有修复按钮**。
 5. 报告在输出目录 `report.html`：顶部就是处置清单。
 
@@ -58,7 +60,7 @@ ctfir scan --out ./out                        # 全量只读扫描
 ctfir scan --out ./out --profile quick        # 快速档：只跑核心模块
 ctfir scan --out ./out --dir /var/www         # 附加巡检目录
 ctfir scan --out ./out --baseline hashes.txt  # 哈希基线比对（"路径 sha256" 每行）
-ctfir actions --session ./out --bucket clear  # 打印立刻清命令（不执行，比赛急救箱）
+ctfir actions --session ./out --bucket clear  # 打印重点复核命令（不执行，比赛急救箱）
 ctfir explain --session ./out --finding <规则ID>   # 单条发现的证据+处置详解
 ctfir report  --session ./out --redact        # 重新生成脱敏 HTML 报告
 ctfir diff --a ./out-before --b ./out-after   # 处置前后复查：哪些消失/新出现

@@ -32,6 +32,7 @@ for b in "${BINS[@]}"; do cp "$b" "$OUT/"; done
 # 文档与许可（与本地 package.sh 同清单）
 cp packaging/README-先读我.md packaging/COMPATIBILITY.md packaging/KNOWN_LIMITATIONS.md \
    THIRD_PARTY_NOTICES.md LICENSE "$OUT/"
+cp docs/SAFETY_086.md docs/SAFETY_RULE_AUDIT.csv "$OUT/"
 cp licenses/nlohmann-json-MIT.txt "$OUT/licenses/"
 
 # Run full fixture gates on both normal and release CI, not just unit tests.

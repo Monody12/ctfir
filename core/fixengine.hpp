@@ -1,3 +1,4 @@
+// 0.8.6 CURRENT POLICY: empty mutation allowlist; legacy fields are ABI/data only, never authorization.
 // 修复引擎执行器（ADR-009）：原生操作（hosts 删行 / Linux 注释行 / 文件隔离）
 // 与命令执行、备份、日志的落地实现——由 CLI 调用。
 #pragma once
@@ -18,7 +19,7 @@ struct FixContext {
 };
 
 // 执行单条 finding 的修复计划（含确认/备份/日志/原生操作）。
-// 返回：true=已执行修复（或 dry-run 打印）。
+// 返回始终false（未执行）；dry-run或确认不能绕过。
 bool run_remediation(const Finding& f, const RemediationPlan& plan, FixContext& fx);
 
 } // namespace ctfir

@@ -184,7 +184,7 @@ std::string build_html_report(const ScanSession& s,
       << " → " << escape_html(beijing_time_str(s.ended_utc))
       << " ｜ 状态 <b>" << escape_html(s.overall_status) << "</b></div>\n"
       << "<div class=\"kpi\">"
-      << "<span class=\"chip\" onclick=\"setCat('clear')\">1.先清 <b>" << kpi.clear << "</b></span>"
+      << "<span class=\"chip\" onclick=\"setCat('clear')\">1.复核 <b>" << kpi.clear << "</b></span>"
       << "<span class=\"chip\" onclick=\"setCat('web')\">2.Web <b>" << kpi.web << "</b></span>"
       << "<span class=\"chip\" onclick=\"setCat('trace')\">3.溯源 <b>" << kpi.trace << "</b></span>"
       << "<span class=\"chip\" onclick=\"setCat('harden')\">4.加固 <b>" << kpi.harden << "</b></span>"
@@ -195,7 +195,7 @@ std::string build_html_report(const ScanSession& s,
     h << "<div class=\"wrap\">\n";
     h << "<div class=\"toolbar\">类别 <select id=\"cat\" onchange=\"applyFilter()\">"
          "<option value=\"all\">全部</option>"
-         "<option value=\"clear\">1.先清</option>"
+         "<option value=\"clear\">1.复核</option>"
          "<option value=\"web\">2.Web</option>"
          "<option value=\"trace\">3.溯源</option>"
          "<option value=\"harden\">4.加固</option>"
@@ -210,7 +210,7 @@ std::string build_html_report(const ScanSession& s,
          "<span class=\"shown\" id=\"shown\"></span></div>\n";
 
     h << "<div class=\"warn\">PASS 只表示这次检查范围内没踩中规则，不等于机器干净。"
-         "按顺序做：先清后门 → Web/中间件 → 把溯源写进报告 → 最后才改加固项。";
+         "按顺序做：先核验证据与业务 → Web/中间件关联 → 把溯源写进报告；自动修改已禁用。";
     if (kpi.web == 0)
         h << " 当前 Web=0，不代表没有站点。";
     h << "</div>\n";

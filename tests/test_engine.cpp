@@ -243,8 +243,8 @@ CTFIR_TEST(engine_finding_advice_and_html_escape) {
     CHECK_EQ(sess.session().modules[0].has_findings, true);
     auto advices = advices_for(sess.findings());
     CHECK_EQ(advices.size(), static_cast<size_t>(1));
-    CHECK(advices[0].text.find("usermod") != std::string::npos);
-    CHECK(advices[0].text.find("UID=0") != std::string::npos);
+    CHECK(advices[0].text.find("usermod") == std::string::npos);
+    CHECK(advices[0].text.find("NSS") != std::string::npos);
     std::string html = build_html_report(sess.session(), sess.evidence(), sess.findings(),
                                          advices, beijing_time_str(now_utc_iso8601()));
     CHECK(html.find("<script>alert(1)</script>") == std::string::npos);

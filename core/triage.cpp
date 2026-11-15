@@ -18,7 +18,7 @@ const char* bucket_id(Bucket b) {
 
 const char* bucket_zh(Bucket b) {
     switch (b) {
-    case Bucket::Clear: return "1.先清";
+    case Bucket::Clear: return "1.复核";
     case Bucket::Web: return "2.Web";
     case Bucket::Trace: return "3.溯源";
     case Bucket::Harden: return "4.加固";

@@ -1,5 +1,5 @@
 // ctfir CLI — 只读应急扫描（契约：version/doctor/scan/explain/report/actions；
-// GUI 拒绝 apply；CLI 可选受控 fix，默认不执行）
+// 所有平台自动修改白名单为空，fix/apply/repair均拒绝）
 #include "core/session.hpp"
 #include "core/report.hpp"
 #include "core/advice.hpp"
@@ -132,12 +132,12 @@ static int cmd_help() {
         "ctfir %s — 15 分钟处置顺序\n"
         "==============================================\n"
         " 1. 先扫：ctfir scan --out out\n"
-        " 2. 先清：账户 / 启动项 / 服务 / 任务 / cron / webshell / 工具\n"
+        " 2. 只读取证预览：账户 / 启动项 / 服务 / 任务 / cron / webshell / 工具\n"
         " 3. Web：站点文件、Redis、MySQL\n"
         " 4. 溯源：日志 Top IP、history、4720，写进报告，不要清日志\n"
         " 5. 加固：密码策略、防火墙、sshd（题面要求再改）\n"
         " 6. 清单：对照项，不必删\n"
-        "复制命令自己执行。持久化要删掉才算。处置后再扫一遍。\n"
+        "自动修改白名单为空；预览不代表已清理。保持业务，核实精确对象与回滚后再由授权管理员审核变更。\n"
         "手册: ctfir playbook <user|task|service|startup|hosts|sshkey|cron|preload|webshell|tools|ransom|log|ad|harden>\n",
         kToolVersion);
     return 0;
@@ -186,52 +186,10 @@ static int cmd_playbook(int argc, char** argv) {
     return 3;
 }
 
-// fix：受控修复（ADR-009）——默认只读不变；仅显式调用并确认后才执行白名单处置
-static int cmd_fix(int argc, char** argv) {
-    std::string dir, fid;
-    bool yes = false, dry = false, all = false;
-    for (int i = 2; i < argc; ++i) {
-        if (!std::strcmp(argv[i], "--session") && i + 1 < argc) dir = argv[++i];
-        else if (!std::strcmp(argv[i], "--finding") && i + 1 < argc) fid = argv[++i];
-        else if (!std::strcmp(argv[i], "--yes")) yes = true;
-        else if (!std::strcmp(argv[i], "--dry-run")) dry = true;
-        else if (!std::strcmp(argv[i], "--all")) all = true;
-    }
-    if (dir.empty() || (fid.empty() && !all)) {
-        std::fprintf(stderr,
-            "[ctfir] fix 需要 --session <目录> 与 --finding <规则ID> 或 --all\n"
-            "  --dry-run  只打印处置计划不执行\n"
-            "  --yes      跳过逐条确认（批量）\n"
-            "说明: 修复仅覆盖白名单操作（账户/任务/服务/注册表值/hosts 行/进程/隔离），"
-            "每步先备份到会话 fix-backup/ 并写 fix-journal.jsonl。\n");
-        return 3;
-    }
-    ScanSession s; std::vector<Finding> fds; std::vector<Evidence> evs; std::string err;
-    if (!load_session_dir(dir, s, fds, evs, err)) {
-        std::fprintf(stderr, "[ctfir] %s\n", err.c_str());
-        return 3;
-    }
-    FixContext fx;
-    fx.session_dir = dir;
-    fx.backup_dir = dir + "/fix-backup";
-    fx.dry_run = dry;
-    fx.assume_yes = yes;
-    std::error_code ec;
-    fs::create_directories(fs::u8path(fx.backup_dir), ec);
-    int offered = 0;
-    for (const auto& f : fds) {
-        if (!all && !(f.rule_id == fid || starts_with(f.rule_id, fid))) continue;
-        ++offered;
-        RemediationPlan plan = plan_remediation(f);
-        run_remediation(f, plan, fx);
-    }
-    if (!offered) {
-        std::fprintf(stderr, "[ctfir] 未匹配到可处置的发现（%s）\n", all ? "会话无发现" : fid.c_str());
-        return 3;
-    }
-    std::printf("[ctfir] 修复完成: 执行 %d / 跳过 %d / 不支持 %d——请重扫验证（diff 前后会话）\n",
-                fx.executed, fx.skipped, fx.unsupported);
-    return 0;
+// fix：0.8.6 熔断入口——在读取会话/创建目录之前无条件拒绝
+static int cmd_fix(int, char**) {
+    std::fprintf(stderr,"[BLOCKED] 0.8.6 自动修改白名单为空；fix/apply/repair 均被拒绝，--yes/--all/--dry-run 不会放行。仅使用 scan/report/actions/explain/playbook 取证预览。\n");
+    return 3;
 }
 
 // diff：两次扫描对比（处置前后复查）
@@ -420,7 +378,7 @@ static int cmd_actions(int argc, char** argv) {
     if (dir.empty()) {
         std::fprintf(stderr,
             "用法: ctfir actions --session <目录> [--bucket clear|web|trace|harden|all]\n"
-            "打印已填好对象的命令，不执行。默认先清后门。\n");
+            "打印只读取证预览，不执行修改。\n");
         return 3;
     }
     if (bucket == "kit") bucket = "clear";
@@ -444,7 +402,7 @@ static int cmd_actions(int argc, char** argv) {
             std::printf(":: %s\n", da.contest_note.c_str());
         std::printf("\n");
     }
-    std::fprintf(stderr, "[ctfir] 已列出 %d 条命令（不执行）。复制粘贴到管理员 cmd。\n", n);
+    std::fprintf(stderr, "[ctfir] 已列出 %d 条命令（不执行）。仅供只读核验，不是清理成功声明。\n", n);
     return n ? 1 : 0;
 }
 
@@ -466,7 +424,7 @@ int main(int argc, char** argv) {
     if (cmd == "version") return cmd_version();
     if (cmd == "doctor") return cmd_doctor();
     if (cmd == "apply" || cmd == "repair") {
-        std::fprintf(stderr, "[ctfir] 不支持 %s；受控修复请用 `ctfir fix --session <目录> --finding <规则ID>`（逐条确认）或 --dry-run 预演。\n", cmd.c_str());
+        std::fprintf(stderr, "[BLOCKED] 自动修改已停用：%s 不会执行。\n", cmd.c_str());
         return 3;
     }
     if (cmd == "fix") return cmd_fix(argc, argv);

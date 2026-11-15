@@ -208,11 +208,11 @@ static std::string sev_zh(const std::string& s) {
 
 static void update_kpi() {
     std::lock_guard<std::recursive_mutex> lk(g_mtx);
-    if (!g_sess) { set_text(g_kpi, "先清 0   Web 0   溯源 0   加固 0   清单 0"); return; }
+    if (!g_sess) { set_text(g_kpi, "复核 0   Web 0   溯源 0   加固 0   清单 0"); return; }
     KpiCounts k = count_kpi(g_sess->findings());
     char buf[256];
     std::snprintf(buf, sizeof(buf),
-                  "1.先清 %d    2.Web %d    3.溯源 %d    4.加固 %d    5.清单 %d    合计 %d",
+                  "1.复核 %d    2.Web %d    3.溯源 %d    4.加固 %d    5.清单 %d    合计 %d",
                   k.clear, k.web, k.trace, k.harden, k.inventory, k.total);
     set_text(g_kpi, buf);
 }
@@ -488,7 +488,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                                        0, 0, 56, 24, hwnd, (HMENU)(INT_PTR)IDC_CANCEL, nullptr, nullptr);
         make_btn(hwnd, IDC_OPENOUT, L"打开报告目录");
 
-        g_kpi = CreateWindowExW(0, L"STATIC", L"先清 0    Web 0    溯源 0    加固 0    清单 0",
+        g_kpi = CreateWindowExW(0, L"STATIC", L"复核 0    Web 0    溯源 0    加固 0    清单 0",
                                 WS_CHILD | WS_VISIBLE, 10, 80, 800, 20, hwnd,
                                 (HMENU)(INT_PTR)IDC_KPI, nullptr, nullptr);
 
@@ -507,7 +507,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         combo_add(g_cmb_view, L"全部", 2);
         SendMessageW(g_cmb_view, CB_SETCURSEL, 0, 0);
         combo_add(g_cmb_cat, L"全部", 0);
-        combo_add(g_cmb_cat, L"1.先清", 1);
+        combo_add(g_cmb_cat, L"1.复核", 1);
         combo_add(g_cmb_cat, L"2.Web", 2);
         combo_add(g_cmb_cat, L"3.溯源", 3);
         combo_add(g_cmb_cat, L"4.加固", 4);
@@ -577,7 +577,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         SendMessageW(g_detail, WM_SETFONT, (WPARAM)g_font_mono, TRUE);
         SendMessageW(g_log, WM_SETFONT, (WPARAM)g_font_mono, TRUE);
         SendMessageW(g_stbar, WM_SETFONT, (WPARAM)g_font, TRUE);
-        append_log("[init] 就绪。扫描后按 先清 → Web → 溯源 → 加固 处理。");
+        append_log("[init] 就绪。扫描后按 复核 → Web → 溯源；本版只读预览，不自动修改。");
         layout();
         return 0;
     }

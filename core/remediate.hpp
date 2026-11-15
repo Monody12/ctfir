@@ -1,7 +1,8 @@
+// 0.8.6 CURRENT POLICY: empty mutation allowlist; legacy fields are ABI/data only, never authorization.
 #pragma once
 // 受控修复（ADR-009，2026-11-12 用户批准）：默认只读不变；
-// 仅当用户显式调用 `ctfir fix` 并逐条确认时，执行白名单内的最小处置。
-// 每次修复：先备份到会话 fix-backup/，写 fix-journal.jsonl，再执行，再提示复扫。
+// 自动修改已禁用，明确yes也不能放行；未知与旧计划默认拒绝。
+// 不执行备份命令、原生修改或shell，不写目标或修复日志。
 #include "model.hpp"
 
 #include <string>
