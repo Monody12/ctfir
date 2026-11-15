@@ -103,10 +103,10 @@ CTFIR_TEST(triage_exam_order_web_before_harden) {
 
 CTFIR_TEST(display_action_filled_commands) {
     auto d=display_action(mk("WIN.ACC.DOLLAR.001","NetUserEnum:ctfir-marker$"));
-    CHECK(d.command.find("net user")!=std::string::npos);
+    CHECK(d.command.find("account-review.ps1")!=std::string::npos);
     CHECK(d.command.find("ctfir-marker$")!=std::string::npos);
     auto a=display_action(mk("LNX.ACC.UID0.001","/etc/passwd:aihelp"));
-    CHECK(a.command.find("getent passwd")!=std::string::npos);
+    CHECK(a.command.find("getent -s files passwd")!=std::string::npos);
     CHECK(a.command.find("aihelp")!=std::string::npos);
     CHECK(a.command.find("usermod")==std::string::npos);
     auto timer=display_action(mk("LNX.TIMER.FACT.001","/etc/systemd/system/legal.timer"));
@@ -254,4 +254,33 @@ CTFIR_TEST(all_playbook_bodies_are_non_mutating_and_root_protected) {
         std::string text=a->text;
         for(const char* bad:{"userdel","usermod","pkill","killall","passwd -l","systemctl stop","crontab -r","sed -i"}) CHECK(text.find(bad)==std::string::npos);
     }
+}
+
+#include "core/account_policy.hpp"
+CTFIR_TEST(account_scope_dc_and_unknown_fail_closed) {
+    CHECK(!account_local_sam_allowed("LanmanNT")); CHECK(!account_local_sam_allowed(""));
+    CHECK(account_local_sam_allowed("ServerNT"));CHECK(account_local_sam_allowed("WinNT"));
+}
+CTFIR_TEST(account_sid_identity_not_name_or_localized_group) {
+    CHECK(account_protected_admin("S-1-5-21-1-2-3-500"));
+    CHECK(!account_protected_admin("S-1-5-21-1-2-3-1500"));
+    CHECK(!account_protected_admin("S-1-5-32-500"));
+    CHECK(account_admin_group_sid("S-1-5-32-544"));CHECK(!account_admin_group_sid("Administrators"));
+    CHECK(!account_admin_group_sid("管理员"));std::uint32_t rid=0;
+    CHECK(account_sid_rid("S-1-5-21-1-2-3-1000",rid));CHECK(rid==1000);
+    CHECK(!account_sid_rid("S-1-5-21-1-2-3-500-",rid));
+    CHECK(!account_sid_rid("S-1-5-21-1-2-3-4294967296",rid));
+}
+CTFIR_TEST(account_linux_malformed_uid_never_becomes_root) {
+    LocalPasswdRecord r;CHECK(parse_local_passwd("root:x:0:0:root:/root:/bin/bash",r));CHECK(r.uid==0);
+    CHECK(parse_local_passwd("ctfir-marker:x:0:0:locked:/root:/sbin/nologin",r));CHECK(r.uid==0);
+    CHECK(parse_local_passwd("backup:x:997:997:legit:/var/lib/backup:/sbin/nologin",r));CHECK(r.uid==997);
+    for(const char* line:{"broken:x:abc:0::/root:/bin/sh","empty:x::0::/root:/bin/sh","negative:x:-1:0::/:/bin/sh","big:x:4294967296:0::/:/bin/sh","+::::::","-external::::::"})CHECK(!parse_local_passwd(line,r));
+}
+CTFIR_TEST(account_nss_external_scope_is_visible_not_queried) {
+    CHECK(!account_nss_has_external("passwd: files systemd"));CHECK(!account_nss_has_external("passwd: files # local only"));
+    CHECK(account_nss_has_external("passwd: files sss"));CHECK(account_nss_has_external("passwd: compat"));
+    CHECK(account_nss_has_external("passwd: files ldap [NOTFOUND=return]"));
+    CHECK(!plan_remediation(mk("WIN.ACC.ADMIN.001","Administrators:legit")).supported);
+    CHECK(bucket_of("WIN.ACC.ADMIN.001")==Bucket::Trace);CHECK(bucket_of("WIN.ACC.CUSTOM.001")==Bucket::Trace);
 }

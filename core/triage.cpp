@@ -59,6 +59,7 @@ static bool has(const std::string& rid, const char* needle) {
 
 Bucket bucket_of(const std::string& rule_id) {
     const std::string& r = rule_id;
+    if(r=="WIN.ACC.ADMIN.001"||r=="WIN.ACC.CUSTOM.001")return Bucket::Trace;
     if (has(r, "INVENTORY") || has(r, "TASK.FACT") || has(r, "TIMER.FACT") ||
         has(r, "FILES.RECENT") || has(r, "BASE.RECENT") ||
         has(r, "CMDRECENT") || has(r, "WIN.AD.ROLE"))
@@ -137,7 +138,7 @@ Bucket bucket_of(const Finding& f) {
 }
 
 static const struct TitleRow { const char* id; const char* title; } kTitles[] = {
-    {"WIN.ACC.DOLLAR.001", "美元号后门账户"},
+    {"WIN.ACC.DOLLAR.001", "美元号结尾账户（需核实）"},
     {"WIN.ACC.INVENTORY.001", "本地账户全量清单"},
     {"WIN.ACC.CUSTOM.001", "自建本地账户"},
     {"WIN.ACC.ADMIN.001", "自建账户在管理员组"},

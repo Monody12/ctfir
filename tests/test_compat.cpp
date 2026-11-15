@@ -54,3 +54,8 @@ CTFIR_TEST(compat_linux_kernel_not_parsed_as_winbuild) {
     auto h = evaluate_host_compat_from("Ubuntu 24.04", "6.6.87.2-microsoft-standard-WSL2", "x86_64", "x86_64");
     CHECK_EQ(h.level, std::string("ok"));
 }
+
+CTFIR_TEST(server2016_build_baseline_is_not_live_validation) {
+    auto h=ctfir::evaluate_host_compat_from("Windows Server 2016","10.0.14393","x64","x64");
+    CHECK(h.level=="ok");
+}

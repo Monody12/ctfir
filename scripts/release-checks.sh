@@ -8,6 +8,7 @@ if [ "$PLATFORM" = windows-x64 ]; then
   export CTFIR_BIN="$BIN"
   "$PYTHON" scripts/scan_bad_escapes.py
   "$PYTHON" tests/test_safety_cli.py "$BIN"
+  powershell.exe -NoProfile -NonInteractive -File tests/test_account_review.ps1
   "$PYTHON" tests/fixture_win.py
   "$PYTHON" tests/practice/exam-hf/run_windows.py "$BIN"
   "$BIN" version

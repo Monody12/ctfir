@@ -1,5 +1,8 @@
 // Windows A 级模块：W01 账户 / W02 登录隐藏 / W04 服务 / W05 自启动(+次要持久化点) / W06 hosts / W08 关键文件哈希
 #include "win_common.hpp"
+#include "core/account_policy.hpp"
+#include "platform/modules_registry.hpp"
+#include <map>
 
 #include <aclapi.h>
 #include <sddl.h>
@@ -14,155 +17,86 @@ namespace {
 
 // ---- W01 账户/管理员组（按 SID 定位管理员组，不靠英文名）----
 void mod_acc(ModuleCtx& ctx) {
-    // 定位内置管理员组 SID S-1-5-32-544 对应名称（本地化安全）
-    SID_IDENTIFIER_AUTHORITY nt = SECURITY_NT_AUTHORITY;
-    PSID admin_sid = nullptr;
-    std::wstring admin_group;
-    if (AllocateAndInitializeSid(&nt, 2, SECURITY_BUILTIN_DOMAIN_RID,
-                                 DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0, 0, 0, 0, &admin_sid)) {
-        wchar_t name[256]{}, dom[256]{};
-        DWORD nlen = 256, dlen = 256;
-        SID_NAME_USE use;
-        if (LookupAccountSidW(nullptr, admin_sid, name, &nlen, dom, &dlen, &use))
-            admin_group = name;
+    const std::string role=ctfir::detect_product_type();
+    ctx.note("ProductType="+role+"; local SAM only; no LDAP/domain enumeration or remote SID name resolution");
+    if(!account_local_sam_allowed(role)) {
+        ctx.omitted_source("local SAM",role=="LanmanNT"?"domain controller: no ordinary local SAM; AD management requires separate explicit scope":"host role unknown: fail closed before account API");
+        ctx.set_status(ModuleStatus::SKIPPED);return;
+    }
+    bool incomplete=false;
+    SID_IDENTIFIER_AUTHORITY nt=SECURITY_NT_AUTHORITY;PSID admin_sid=nullptr;std::wstring admin_group;
+    if(AllocateAndInitializeSid(&nt,2,SECURITY_BUILTIN_DOMAIN_RID,DOMAIN_ALIAS_RID_ADMINS,0,0,0,0,0,0,&admin_sid)) {
+        wchar_t name[256]{},dom[256]{};DWORD n=256,d=256;SID_NAME_USE use;
+        if(LookupAccountSidW(nullptr,admin_sid,name,&n,dom,&d,&use))admin_group=name;
         FreeSid(admin_sid);
     }
-    ctx.note(std::string("管理员组定位(按SID S-1-5-32-544): ") +
-             (admin_group.empty() ? "失败" : wide_to_utf8(admin_group).c_str()));
-
-    // 枚举本地用户（level 3: name/RID/flags）
-    LPUSER_INFO_3 buf = nullptr;
-    DWORD read = 0, total = 0, resume = 0;
-    NET_API_STATUS st = NetUserEnum(nullptr, 3, FILTER_NORMAL_ACCOUNT,
-                                    (LPBYTE*)&buf, MAX_PREFERRED_LENGTH,
-                                    &read, &total, &resume);
-    if (st == NERR_Success || st == ERROR_MORE_DATA) {
-        std::string userlist;
-        for (DWORD i = 0; i < read; ++i) {
-            USER_INFO_3& u = buf[i];
-            std::string name = wide_to_utf8(u.usri3_name);
-            userlist += name + "(RID" + std::to_string(u.usri3_user_id) +
-                        (u.usri3_flags & UF_ACCOUNTDISABLE ? ",disabled" : "") + ") ";
-        }
-        Evidence e;
-        e.source_kind = "api";
-        e.source_path = "NetUserEnum(level3)";
-        e.payload = userlist;
-        ctx.add_evidence(e);
-        ctx.checked_source("NetUserEnum");
-        // $ 结尾账户已包含在枚举中（API 级可见，区别于 net user 显示）——单独提示
-        for (DWORD i = 0; i < read; ++i) {
-            std::string name = wide_to_utf8(buf[i].usri3_name);
-            if (name.size() > 1 && name.back() == '$' && name.find("SUPPORT_") != 0) {
-                Finding f;
-                f.rule_id = "WIN.ACC.DOLLAR.001";
-                f.severity = "medium";
-                f.confidence = "medium";
-                f.rationale = "存在以 $ 结尾的账户（部分显示工具不可见，API 可见）: " + name +
-                              "（机器账户/服务账户可能合法，需核对 RID 与描述）";
-                f.object_ref = "NetUserEnum:" + name;
-                f.advice_id = "ADVICE.ACC.REVIEW.001";
-                ctx.add_finding(f);
+    ctx.note("Administrators group identified by S-1-5-32-544, not language or display name");
+    std::map<std::string,std::string> local_names;
+    LPUSER_INFO_3 buf=nullptr;DWORD count=0,total=0,resume=0;
+    NET_API_STATUS st=NetUserEnum(nullptr,3,FILTER_NORMAL_ACCOUNT,(LPBYTE*)&buf,MAX_PREFERRED_LENGTH,&count,&total,&resume);
+    if(st==NERR_Success||st==ERROR_MORE_DATA) {
+        if(st==ERROR_MORE_DATA){incomplete=true;ctx.omitted_source("NetUserEnum","partial page, ERROR_MORE_DATA; not claimed complete");}
+        std::string inventory;
+        for(DWORD i=0;i<count;++i) {
+            if(ctx.expired()){incomplete=true;ctx.omitted_source("local accounts","budget exhausted");break;}
+            const auto& u=buf[i];std::string name=wide_to_utf8(u.usri3_name),sid;
+            USER_INFO_4* detail=nullptr;
+            auto ds=NetUserGetInfo(nullptr,u.usri3_name,4,reinterpret_cast<LPBYTE*>(&detail));
+            if(ds==NERR_Success&&detail&&detail->usri4_user_sid&&IsValidSid(detail->usri4_user_sid)) {
+                LPWSTR txt=nullptr;if(ConvertSidToStringSidW(detail->usri4_user_sid,&txt)){sid=wide_to_utf8(txt);LocalFree(txt);}
+            }
+            if(detail)NetApiBufferFree(detail);
+            if(sid.empty()){incomplete=true;ctx.omitted_source("NetUserGetInfo4:"+name,"SID unavailable status="+std::to_string(ds));}
+            else {
+                std::uint32_t sidrid=0;
+                if(!account_sid_rid(sid,sidrid)||sidrid!=u.usri3_user_id){incomplete=true;ctx.omitted_source("account identity:"+name,"RID changed or SID invalid; not correlated");sid.clear();}
+                else local_names[sid]=name;
+            }
+            std::string identity=name+" [SID="+(sid.empty()?"unavailable":sid)+",RID="+std::to_string(u.usri3_user_id)+"]";
+            inventory+=identity+(u.usri3_flags&UF_ACCOUNTDISABLE?" disabled; ":" enabled; ");
+            if(u.usri3_user_id==500)inventory+="protected built-in administrator (name may be changed); ";
+            if(u.usri3_user_id>=1000) {
+                Finding f;f.rule_id="WIN.ACC.CUSTOM.001";f.severity="info";f.confidence="high";
+                f.rationale="本地SAM自建账户事实: "+identity+"；合法管理员/服务账户常见，不是入侵定论。核对服务StartName、任务Principal、会话和批准基线。";
+                f.object_ref="NetUserEnum:"+name;f.advice_id="ADVICE.ACC.REVIEW.001";ctx.add_finding(f);
+            }
+            if(u.usri3_user_id!=500&&u.usri3_user_id!=501&&name.size()>1&&name.back()=='$'&&name.find("SUPPORT_")!=0) {
+                Finding f;f.rule_id="WIN.ACC.DOLLAR.001";f.severity="medium";f.confidence="medium";
+                f.rationale="本地SAM美元号结尾账户: "+identity+"；命名本身不证明恶意，核实授权与创建来源。";
+                f.object_ref="NetUserEnum:"+name;f.advice_id="ADVICE.ACC.REVIEW.001";ctx.add_finding(f);
             }
         }
-        // 账户事实化（A7C9-W01）：全量清单 + 非内置账户逐个呈现
-        {
-            std::string inv;
-            for (DWORD i = 0; i < read; ++i) {
-                USER_INFO_3& u = buf[i];
-                inv += wide_to_utf8(u.usri3_name) + "(RID" + std::to_string(u.usri3_user_id) +
-                       (u.usri3_flags & UF_ACCOUNTDISABLE ? ",禁用" : ",活动") + ") ";
-            }
-            Finding fsum;
-            fsum.rule_id = "WIN.ACC.INVENTORY.001";
-            fsum.severity = "info";
-            fsum.confidence = "high";
-            fsum.rationale = "本地账户清单（事实呈现）: " + inv + "——不构成恶意判定，供与隐藏键/管理员组交叉核实";
-            fsum.object_ref = "NetUserEnum";
-            fsum.advice_id = "ADVICE.ACC.REVIEW.001";
-            ctx.add_finding(fsum);
-            for (DWORD i = 0; i < read; ++i) {
-                USER_INFO_3& u = buf[i];
-                if (u.usri3_user_id <= 1000) continue; // 内置段(500 Administrator/501 Guest 等)
-                Finding f;
-                f.rule_id = "WIN.ACC.CUSTOM.001";
-                f.severity = "low";
-                f.confidence = "high";
-                f.rationale = "非内置本地账户: " + wide_to_utf8(u.usri3_name) +
-                              " (RID " + std::to_string(u.usri3_user_id) +
-                              (u.usri3_flags & UF_ACCOUNTDISABLE ? "，已禁用" : "，活动") +
-                              ")——授权运维/自建服务账户常见，需核实创建来源";
-                f.object_ref = "NetUserEnum:" + wide_to_utf8(u.usri3_name);
-                f.advice_id = "ADVICE.ACC.REVIEW.001";
-                ctx.add_finding(f);
-            }
-        }
-        NetApiBufferFree(buf);
-    } else {
-        ctx.omitted_source("NetUserEnum", last_error_str("NetUserEnum"));
-    }
-
-    // 管理员组成员（SID 路径）
-    if (!admin_group.empty()) {
-        LOCALGROUP_MEMBERS_INFO_2* mb = nullptr;
-        DWORD mread = 0, mtotal = 0;
-        DWORD_PTR mresume = 0;
-        NET_API_STATUS mst = NetLocalGroupGetMembers(nullptr, admin_group.c_str(), 2,
-                                                     (LPBYTE*)&mb, MAX_PREFERRED_LENGTH,
-                                                     &mread, &mtotal, &mresume);
-        if (mst == NERR_Success) {
-            std::string members;
-            for (DWORD i = 0; i < mread; ++i) {
-                PSID sid = mb[i].lgrmi2_sid;
-                LPWSTR sidstr = nullptr;
-                std::string sidtxt;
-                if (ConvertSidToStringSidW(sid, &sidstr)) {
-                    sidtxt = wide_to_utf8(sidstr);
-                    LocalFree(sidstr);
-                }
-                std::string mname = wide_to_utf8(mb[i].lgrmi2_domainandname);
-                members += mname + "[" + sidtxt + "] ";
-                // 自建账户（RID>1000 的用户 SID）进管理员组 → 重点提示
-                PUCHAR cnt = GetSidSubAuthorityCount(sid);
-                if (cnt && *cnt >= 1) {
-                    DWORD rid = *GetSidSubAuthority(sid, *cnt - 1);
-                    if (rid > 1000 && mb[i].lgrmi2_sidusage == SidTypeUser) {
-                        Finding f;
-                        f.rule_id = "WIN.ACC.ADMIN.001";
-                        f.severity = "medium";
-                        f.confidence = "medium";
-                        f.rationale = "管理员组含自建账户(RID>1000): " + mname + " [" + sidtxt +
-                                      "]——授权运维可合法；结合创建时间/日志核实";
-                        f.object_ref = "Administrators:" + mname;
-                        f.advice_id = "ADVICE.ACC.REVIEW.001";
-                        ctx.add_finding(f);
-                    }
-                    // Guest/克隆账号进管理员组（知攻善防·Where-1S-tHe-Hacker：Guest 被加管理员组）
-                    if (mb[i].lgrmi2_sidusage == SidTypeUser && rid == 501) {
-                        Finding f;
-                        f.rule_id = "WIN.ACC.GUESTADMIN.001";
-                        f.severity = "high";
-                        f.confidence = "high";
-                        f.rationale = "Guest 账户在管理员组内: " + mname +
-                                      " [" + sidtxt + "]——克隆账号/提权痕迹（Guest 默认不属管理员组）";
-                        f.object_ref = "Administrators:" + mname;
-                        f.advice_id = "ADVICE.ACC.REVIEW.001";
-                        ctx.add_finding(f);
-                    }
+        Evidence e;e.source_kind="api";e.source_path="NetUserEnum(level3) + local NetUserGetInfo(level4)";e.payload=inventory;ctx.add_evidence(e);ctx.checked_source("NetUserEnum");
+        Finding f;f.rule_id="WIN.ACC.INVENTORY.001";f.severity="info";f.confidence="high";f.rationale="本地SAM账户清单，SID/RID为身份依据，RID500即使改名仍受保护："+inventory;
+        f.object_ref="NetUserEnum";f.advice_id="ADVICE.ACC.REVIEW.001";ctx.add_finding(f);
+    } else {incomplete=true;ctx.omitted_source("NetUserEnum","status="+std::to_string(st));}
+    if(buf)NetApiBufferFree(buf);
+    if(!admin_group.empty()) {
+        LOCALGROUP_MEMBERS_INFO_0* members=nullptr;DWORD read=0,n=0;DWORD_PTR r=0;
+        auto status=NetLocalGroupGetMembers(nullptr,admin_group.c_str(),0,(LPBYTE*)&members,MAX_PREFERRED_LENGTH,&read,&n,&r);
+        if(status==NERR_Success||status==ERROR_MORE_DATA) {
+            if(status==ERROR_MORE_DATA){incomplete=true;ctx.omitted_source("administrator group","partial membership page");}
+            std::string listing;
+            for(DWORD i=0;i<read;++i) {
+                PSID sid=members[i].lgrmi0_sid;if(!sid||!IsValidSid(sid))continue;
+                LPWSTR txt=nullptr;if(!ConvertSidToStringSidW(sid,&txt))continue;
+                std::string sidtxt=wide_to_utf8(txt);LocalFree(txt);
+                auto local=local_names.find(sidtxt);
+                listing+=sidtxt+(local==local_names.end()?" [not resolved; may be domain/group/builtin, no remote lookup]; ":" [local:"+local->second+"]; ");
+                if(local==local_names.end())continue;
+                std::uint32_t rid=0;if(!account_sid_rid(sidtxt,rid))continue;
+                if(rid>=1000||rid==501) {
+                    Finding f;f.rule_id=rid==501?"WIN.ACC.GUESTADMIN.001":"WIN.ACC.ADMIN.001";
+                    f.severity=rid==501?"high":"low";f.confidence="high";
+                    f.rationale="本地SAM账户属于内置管理员组S-1-5-32-544: "+local->second+" ["+sidtxt+"]；仅权限事实，核实授权/依赖，不据此自动禁用或删除。";
+                    f.object_ref="Administrators:"+local->second;f.advice_id="ADVICE.ACC.REVIEW.001";ctx.add_finding(f);
                 }
             }
-            Evidence e;
-            e.source_kind = "api";
-            e.source_path = "NetLocalGroupGetMembers(Administrators by SID)";
-            e.payload = members;
-            ctx.add_evidence(e);
-            ctx.checked_source("NetLocalGroupGetMembers");
-            NetApiBufferFree(mb);
-        } else {
-            ctx.omitted_source("NetLocalGroupGetMembers", last_error_str("NetLocalGroupGetMembers"));
-        }
-    }
-    ctx.set_status(ModuleStatus::PASS);
+            Evidence e;e.source_kind="api";e.source_path="NetLocalGroupGetMembers(level0,S-1-5-32-544)";e.payload=listing;ctx.add_evidence(e);ctx.checked_source("NetLocalGroupGetMembers");
+        } else {incomplete=true;ctx.omitted_source("NetLocalGroupGetMembers","status="+std::to_string(status));}
+        if(members)NetApiBufferFree(members);
+    } else {incomplete=true;ctx.omitted_source("S-1-5-32-544","local group name unavailable");}
+    ctx.set_status(ctx.expired()?ModuleStatus::TIMEOUT:incomplete?ModuleStatus::ERROR:ModuleStatus::PASS);
 }
 
 // ---- W02 登录界面隐藏 ----

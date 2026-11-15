@@ -250,11 +250,11 @@ void mod_ad_files(ModuleCtx& ctx) {
         role.rationale =
             "本机呈现域控特征（ProductType=" + pt +
             (dc ? " 或存在 SYSVOL/NTDS/NTDS 服务" : "") +
-            "）。本地 SAM 只含 DC 本机账户；Domain Admins / 域用户不在 NetUserEnum 结果里。"
+            "）。域控没有普通本地SAM，WIN.ACC已跳过；NetUserEnum在DC可能枚举域对象，本工具不据此查询AD。"
             "已扫描 SYSVOL/GPP/NTDS 副本与凭据防护注册表；不查询 LDAP、不导出哈希。";
     } else if (to_lower(pt) == "servernt") {
         role.rationale =
-            "本机是成员服务器（ProductType=ServerNT）。域账户不在本地 SAM。"
+            "本机是独立或成员服务器（ProductType=ServerNT本身不区分域加入）。本地SAM不代表域账户全覆盖。"
             "已扫描可能落到本机的 SYSVOL 副本、NTDS 导出与 Server 凭据防护项。";
     } else {
         role.rationale =

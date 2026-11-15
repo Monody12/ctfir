@@ -22,12 +22,12 @@ DisplayAction display_action(const Finding& f) {
     if (starts_with(r,"LNX.PROC.") && starts_with(obj,"PID ")) {
         std::string pid=obj.substr(4);
         if (digits(pid)) a.command="ps -p "+pid+" -o pid,ppid,user,args\nreadlink /proc/"+pid+"/exe";
-    } else if (starts_with(r,"LNX.ACC.") || r=="LNX.BASE.EMPTYPWD.001" || r=="LNX.BASE.WEAKPWD.001" || r=="LNX.BASE.SYSACCT.001") {
+    } else if (r=="LNX.ACC.UID0.001" || r=="LNX.ACC.DUPUID.001" || r=="LNX.BASE.EMPTYPWD.001" || r=="LNX.BASE.WEAKPWD.001" || r=="LNX.BASE.SYSACCT.001") {
         size_t p=obj.rfind(':'); std::string name=p==std::string::npos?"":obj.substr(p+1);
         bool valid=!name.empty() && std::all_of(name.begin(),name.end(),[](unsigned char c){return std::isalnum(c)||c=='_'||c=='-'||c=='.';});
-        if (valid && !digits(name)) a.command="getent passwd \""+name+"\" | cut -d: -f1,3,4,6,7\nid \""+name+"\"";
-        else a.command="getent passwd | cut -d: -f1,3,4,6,7";
-        a.contest_note="同UID是同一内核安全身份：名称不隔离进程/文件。不能按UID杀进程、递归删home或批量改账户数据库；不能改受保护root凭据。核实本地/NSS和共享home，先保留有效管理员与备用控制台。";
+        if (valid && !digits(name)) a.command="getent -s files passwd \""+name+"\" | cut -d: -f1,3,4,6,7";
+        else a.command="getent -s files passwd | cut -d: -f1,3,4,6,7";
+        a.contest_note="仅本地files查询，不隐式访问SSSD/LDAP。CentOS UID0别名需人审后用vipw/vipw -s精确记录处理，普通账户也须核实业务与重建源；同UID是同一内核安全身份：名称不隔离进程/文件。不能按UID杀进程、递归删home或批量改账户数据库；不能改受保护root凭据。核实本地/NSS和共享home，先保留有效管理员与备用控制台。";
     } else if (r=="LNX.PERSIST.SYSTEMD.001" || r=="LNX.TIMER.FACT.001") {
         std::string unit=obj.substr(obj.find_last_of('/')==std::string::npos?0:obj.find_last_of('/')+1);
         bool valid=!unit.empty() && std::all_of(unit.begin(),unit.end(),[](unsigned char c){return std::isalnum(c)||c=='_'||c=='-'||c=='.'||c=='@'||c==':';});
@@ -39,8 +39,9 @@ DisplayAction display_action(const Finding& f) {
         a.command="stat -- \""+path+"\"";
     } else if (starts_with(r,"WIN.ACC.")) {
         size_t colon=obj.rfind(':');std::string name=colon==std::string::npos?"":obj.substr(colon+1);
-        if(!name.empty() && name[0]!='/' && name[0]!='-') a.command="net user \""+name+"\"";
+        if(!name.empty() && name[0]!='/' && name[0]!='-') a.command="powershell.exe -NoProfile -File .\\account-review.ps1 -Name \""+name+"\"";
     }
+    if(starts_with(r,"WIN.ACC."))a.contest_note="先区分独立/成员服务器本地SAM和域控AD；按SID/RID而非Administrator名字核验。RID500受保护，管理员组成员不等于恶意；核对服务StartName/任务Principal/会话和再生源，人审后先禁用观察再按需删除，不删profile、不用/domain。预览脚本无修改能力。";
     return a;
 }
 std::string instantiate_advice_body(const Finding& f) {

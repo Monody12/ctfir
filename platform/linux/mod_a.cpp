@@ -1,6 +1,7 @@
 // Linux A 级模块：L01 账户 / L02 SSH / L03 cron / L04 shell 持久化 / L05 preload / L06 hosts / L13 痕迹
 #include "lnx_common.hpp"
 #include "core/lnx_heuristics.hpp"
+#include "core/account_policy.hpp"
 
 #include <cstring>
 #include <map>
@@ -15,18 +16,25 @@ void mod_acc(ModuleCtx& ctx) {
     ReadResult pw = read_source(ctx, "/etc/passwd", true);
     ReadResult gr = read_source(ctx, "/etc/group", true);
 
+    ReadResult nss = read_source(ctx, "/etc/nsswitch.conf", false);
+    ctx.note("账户范围仅本地文件；不执行getent，不查询SSSD/LDAP/NIS/域目录；CentOS版本与实际内核须另核对");
+    if(nss.ok) for_each_line(nss.content,[&](int,const std::string& line) {
+        if(starts_with(trim(line),"passwd:")) {
+            Evidence e;e.source_kind="file";e.source_path="/etc/nsswitch.conf";e.payload=trim(line)+"; local-files-only, no external NSS query";ctx.add_evidence(e);
+            if(account_nss_has_external(trim(line)))ctx.omitted_source("external NSS accounts","offline scope: provider configured but not enumerated; local PASS does not exclude domain users");
+        }
+    });
     if (pw.ok) {
-        std::map<int, std::vector<std::string>> uid_names;
+        std::map<std::uint32_t, std::vector<std::string>> uid_names;
         for_each_line(pw.content, [&](int no, const std::string& line) {
             std::string t = trim(line);
             if (t.empty() || t[0] == '#') return;
-            // name:passwd:uid:gid:gecos:home:shell
-            int p1 = static_cast<int>(t.find(':'));
-            int p2 = static_cast<int>(t.find(':', p1 + 1));
-            int p3 = static_cast<int>(t.find(':', p2 + 1));
-            if (p1 <= 0 || p2 < 0 || p3 < 0) return;
-            std::string name = t.substr(0, p1);
-            int uid = std::atoi(t.substr(p2 + 1, p3 - p2 - 1).c_str());
+            LocalPasswdRecord rec;
+            if(!parse_local_passwd(t,rec)) {
+                if(t[0]!='+'&&t[0]!='-')ctx.omitted_source("/etc/passwd:"+std::to_string(no),"malformed local record, not interpreted as UID0");
+                return;
+            }
+            const std::string& name=rec.name;const auto uid=rec.uid;
             uid_names[uid].push_back(name);
             if (uid == 0 && name != "root") {
                 Finding f;
@@ -34,7 +42,7 @@ void mod_acc(ModuleCtx& ctx) {
                 f.severity = "high";
                 f.confidence = "medium"; // 事实确定；是否授权需人工核实（PLAN §9.4 示例口径）
                 f.rationale = "账户 " + name + " 的 UID=0（/etc/passwd 第 " + std::to_string(no) +
-                              " 行），等于第二个 root";
+                              " 行），共享root内核权限；不是已证实恶意，需核实授权/来源/业务依赖";
                 f.evidence_paths = {"/etc/passwd"};
                 f.object_ref = "/etc/passwd:" + name;
                 f.limitations = {"仅本地文件账户；NSS/域账户不在范围；不能证明内核未被控制"};
