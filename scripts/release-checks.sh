@@ -7,6 +7,7 @@ if [ "$PLATFORM" = windows-x64 ]; then
   PYTHON=python
   export CTFIR_BIN="$BIN"
   "$PYTHON" scripts/scan_bad_escapes.py
+  "$PYTHON" tests/test_account_scope_static.py
   "$PYTHON" tests/test_safety_cli.py "$BIN"
   powershell.exe -NoProfile -NonInteractive -File tests/test_account_review.ps1
   "$PYTHON" tests/fixture_win.py
@@ -15,6 +16,7 @@ if [ "$PLATFORM" = windows-x64 ]; then
   "$PYTHON" scripts/gui-smoke.py "$(dirname "$BIN")/ctfir-gui.exe"
 else
   python3 scripts/scan_bad_escapes.py
+  python3 tests/test_account_scope_static.py
   BIN=$(realpath "$BIN")
   python3 tests/test_safety_cli.py "$BIN"
   mkdir -p out/release-checks

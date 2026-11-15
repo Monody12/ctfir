@@ -3,6 +3,8 @@
 #include "win_common.hpp"
 #include "core/log_attack.hpp"
 #include "core/triage.hpp"
+#include "core/account_policy.hpp"
+#include "platform/modules_registry.hpp"
 #include <cstdlib>
 
 #include <winsock2.h>
@@ -20,8 +22,15 @@ namespace ctfir::win {
 
 namespace {
 
+bool local_sam_scope(ModuleCtx& ctx) {
+    const auto role=ctfir::detect_product_type();
+    if(account_local_sam_allowed(role))return true;
+    ctx.omitted_source("local SAM/account policy", "ProductType="+role+"; DC or unknown role: skip before account APIs, no AD query");
+    ctx.set_status(ModuleStatus::SKIPPED);return false;
+}
 // ---- WIN.BASE.PASSWORD：密码策略（NetUserModalsGet）----
 void mod_base_password(ModuleCtx& ctx) {
+    if(!local_sam_scope(ctx))return;
     USER_MODALS_INFO_0* u1 = nullptr;
     NET_API_STATUS st = NetUserModalsGet(nullptr, 0, (LPBYTE*)&u1);
     if (st != NERR_Success) {
@@ -97,12 +106,14 @@ void mod_base_password(ModuleCtx& ctx) {
 
 // ---- WIN.BASE.ACCOUNTS：空密码/不需要密码账户 + Guest 状态 ----
 void mod_base_accounts(ModuleCtx& ctx) {
+    if(!local_sam_scope(ctx))return;
     LPUSER_INFO_3 buf = nullptr;
     DWORD read = 0, total = 0, resume = 0;
     if (NetUserEnum(nullptr, 3, FILTER_NORMAL_ACCOUNT, (LPBYTE*)&buf,
                     MAX_PREFERRED_LENGTH, &read, &total, &resume) != NERR_Success) {
         ctx.omitted_source("NetUserEnum(口令状态)", last_error_str("NetUserEnum"));
         ctx.set_status(ModuleStatus::ERROR);
+        if(buf)NetApiBufferFree(buf);
         return;
     }
     for (DWORD i = 0; i < read; ++i) {
@@ -114,7 +125,7 @@ void mod_base_accounts(ModuleCtx& ctx) {
             f.severity = "high";
             f.confidence = "medium";
             f.rationale = "账户 \"" + name + "\" 标记为\"不需要密码\"（UF_PASSWD_NOTREQD）——"
-                          "可能存在空口令，可直接登录的账面风险";
+                          "只是策略标志，不证明实际空密码、可登录或入侵；需结合授权基线核实";
             f.object_ref = "NetUserEnum:" + name;
             f.advice_id = "ADVICE.HARDEN.001";
             ctx.add_finding(f);
@@ -128,8 +139,8 @@ void mod_base_accounts(ModuleCtx& ctx) {
                 f.rule_id = "WIN.BASE.GUEST.001";
                 f.severity = "medium";
                 f.confidence = "high";
-                f.rationale = "Guest 账户处于启用状态（基线建议禁用）";
-                f.object_ref = "NetUserEnum:Guest";
+                f.rationale = "RID501内置Guest账户处于启用状态（名字可能已改）；仅基线事实，先核实业务与赛事限制";
+                f.object_ref = "NetUserEnum:"+wide_to_utf8(buf[i].usri3_name);
                 f.advice_id = "ADVICE.ACC.REVIEW.001";
                 ctx.add_finding(f);
             }
