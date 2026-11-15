@@ -48,7 +48,7 @@ void mod_systemd(ModuleCtx& ctx) {
                     f.rationale = "systemd Exec 执行隐藏/临时路径或反弹/下载执行链: " + t.substr(0, 400);
                     f.evidence_paths = refs;
                     f.object_ref = p;
-                    f.limitations = {"未证明单元已启用；drop-in 按文件检查；脚本最多一层/64KiB/每模块64个"};
+                    f.limitations = {"未证明单元已启用；未解析drop-in有效合并或完整timer关联；脚本最多一层/64KiB/每模块64个"};
                     f.advice_id = "ADVICE.CRON.REVIEW.001";
                     ctx.add_finding(f);
                 });

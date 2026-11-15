@@ -25,8 +25,8 @@ DisplayAction display_action(const Finding& f) {
     } else if (starts_with(r,"LNX.ACC.") || r=="LNX.BASE.EMPTYPWD.001" || r=="LNX.BASE.WEAKPWD.001" || r=="LNX.BASE.SYSACCT.001") {
         size_t p=obj.rfind(':'); std::string name=p==std::string::npos?"":obj.substr(p+1);
         bool valid=!name.empty() && std::all_of(name.begin(),name.end(),[](unsigned char c){return std::isalnum(c)||c=='_'||c=='-'||c=='.';});
-        if (valid && !digits(name)) a.command="getent passwd \""+name+"\"\nid \""+name+"\"";
-        else a.command="getent passwd";
+        if (valid && !digits(name)) a.command="getent passwd \""+name+"\" | cut -d: -f1,3,4,6,7\nid \""+name+"\"";
+        else a.command="getent passwd | cut -d: -f1,3,4,6,7";
         a.contest_note="同UID是同一内核安全身份：名称不隔离进程/文件。不能按UID杀进程、递归删home或批量改账户数据库；不能改受保护root凭据。核实本地/NSS和共享home，先保留有效管理员与备用控制台。";
     } else if (r=="LNX.PERSIST.SYSTEMD.001" || r=="LNX.TIMER.FACT.001") {
         std::string unit=obj.substr(obj.find_last_of('/')==std::string::npos?0:obj.find_last_of('/')+1);

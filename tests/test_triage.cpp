@@ -247,3 +247,11 @@ CTFIR_TEST(protected_root_duplicate_uid_and_legitimate_timer_are_preview_only) {
     }
     auto f=mk("LNX.ACC.UID0.001","/etc/passwd:aihelp");CHECK(display_action(f).contest_note.find("NSS")!=std::string::npos);
 }
+
+CTFIR_TEST(all_playbook_bodies_are_non_mutating_and_root_protected) {
+    for(const char* id:{"ADVICE.ACC.REVIEW.001","ADVICE.LOGIN_HIDE.REVIEW.001","ADVICE.TASK.REVIEW.001","ADVICE.SVC.REVIEW.001","ADVICE.AUTORUN.REVIEW.001","ADVICE.HOSTS.REVIEW.001","ADVICE.SSHKEY.REVIEW.001","ADVICE.CRON.REVIEW.001","ADVICE.PROFILE.REVIEW.001","ADVICE.PRELOAD.REVIEW.001","ADVICE.WEBSHELL.REVIEW.001","ADVICE.MINER.REVIEW.001","ADVICE.HASH.BASELINE.001","ADVICE.FILE.REVIEW.001","ADVICE.HARDEN.001","ADVICE.AD.REVIEW.001","ADVICE.EVENTLOG.REVIEW.001","ADVICE.TOOLS.REVIEW.001","ADVICE.RANSOM.REVIEW.001","ADVICE.RMT.REVIEW.001","ADVICE.MID.REVIEW.001"}) {
+        auto a=find_advice(id); CHECK(a!=nullptr); if(!a)continue;
+        std::string text=a->text;
+        for(const char* bad:{"userdel","usermod","pkill","killall","passwd -l","systemctl stop","crontab -r","sed -i"}) CHECK(text.find(bad)==std::string::npos);
+    }
+}

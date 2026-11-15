@@ -727,3 +727,10 @@ Win7 已部署 `C:\ctfir-test\ctfir.exe` / `ctfir-gui.exe` 本轮产物。JW2026
 - 已执行 CI：`https://github.com/Monody12/ctfir/actions/runs/43612183540`，commit `9a0d0c6`，双平台 success。Windows **116/116**；基础 **29/29**；高频 **16/16**；GUI `window_created=1 modules=31`。Linux **112/112**，四发行版基础各 **43/43**，新增隐藏链夹具 **76/76**，hidepid 与高频门禁通过（确切高频总数见对应日志）。
 - Kali 同机只读 A/B（准确 CI Linux 二进制）：0.8.4 **45** findings → 中间修复提交9a0d0c6的0.8.5 **32**；LDSO 2→0，名称差异8→1，caps 6→2（设备/inode去重，含同文件别名）。前后 stat/cron/systemd/ss 状态文本完全相同。不是误报率，也不是原始植入态10/10。
 - A/B 暴露并修正两个剩余噪声：`sshd: root@pts/1` 非绝对路径标题不应按斜杠切分；扫描器自身按 getpid 排除，不再按任意名为 ctfir 的文件白名单。最终提交须再次通过同套 CI，最终包只取该提交产物。
+
+
+## v0.8.6 CI-first 安全验证记录（候选提交）
+
+- 第一提交 a455ae4：CI 43728786379 Linux success、Windows 编译和单测 success；Windows 新CLI测试因宿主默认cp1252解码UTF-8失败，**未发布**。后续正常提交仅修复测试编码并补充NSS口令字段脱敏、只读限制说明和全部21项手册正文断言，重新CI。
+- 静态引用台账225个ID不等于225条实环境验证；自动修改全部撤销，检测点仍192。scan/report继续通过既有扫描夹具/HTML单测验证。
+- hidepid挂载撤销特权容器，非特权挂载受限则明确SKIP，不把其他权限用例冒充hidepid实测。真正systemd PID1有效合并和应用侧业务修复未证明覆盖。
