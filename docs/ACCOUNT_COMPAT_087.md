@@ -21,4 +21,4 @@
 - cron/timer高频、注释或自定义脚本只属线索，先核对实际unit/drop-in/ExecStart/引用脚本与来源，确认恶意后才审核精确再生源处理；不清空全部cron，不停全部服务。
 - CentOS用户态容器不等于对应内核或完整systemd/SSH真机；7/8/Stream各版本只按实测记录声称覆盖。32位Linux/Windows不在x64包支持范围。
 
-已知边界：完整systemd有效drop-in合并、外部NSS/LDAP/SSSD目录账户枚举、AD域清理、所有业务应用依赖不在本次验证保证范围。真实验证数字与环境见Release及实测附件，不承诺跨环境100%有效。
+已知边界：完整systemd有效drop-in合并、外部NSS/LDAP/SSSD目录账户枚举、AD域清理、所有业务应用依赖不在本次验证保证范围。本轮CentOS7.9用户态 shadow-utils4.6-5.el7：唯一锁定/过期/nologin UID0别名，普通删除rc8；vipw精确passwd/shadow删除rc0/0；六份账户库逐字节一致，PID1/root目录与自建哨兵保留，pwck-r rc2前后相同无新增警告。Docker共享6.12.113+内核，不等于CentOS3.10或完整SSH/systemd验证。CentOS8/Stream8未实测；Stream9以Release日志为准。真实CI数字与环境见Release及实测附件，不承诺跨环境100%有效。

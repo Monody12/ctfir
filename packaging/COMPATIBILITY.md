@@ -2,7 +2,15 @@
 
 发布只承诺“本表已测格”；未测格不代表不支持，只代表未验证。无法容器化的格给出自动化替代，**不把替代写成该 OS/内核已 PASSED**。
 
-## 已测（有证据，见 TEST_RESULTS.md）
+## 0.8.7 本轮增量（不得与旧版历史验证混同）
+
+- Windows Server2016 x64/build14393：最低API/PE目标基线与版本解析回归；未有2016真机。当前Windows CI是Server2022+PowerShell5.1，不冒充2016实测。
+- 新账户范围/SID/RID/NSS解析、DC跳过、管理员中文/英文名字不影响SID身份、合法服务账户负例有自动回归。预览脚本不依赖LocalAccounts模块。
+- 本轮CentOS7.9用户态 shadow-utils4.6-5.el7实测：锁定过期不可登录的唯一UID0测试别名，普通删除返回8，原生持锁vipw精确记录删除返回0；六份账户库逐字节恢复基线，PID1/自建哨兵/root目录不变。非真实3.10内核/SSH/systemd实验。
+- CentOS8/Stream8未本轮实测；Stream9以Release附带实际日志为准。不把容器用户态称为完整操作系统兼容保证。
+- 保留0.8.6全自动修改冻结。详见ACCOUNT_COMPAT_087.md、SAFETY_086.md。
+
+## 历史已测（原版本证据，见仓库 TEST_RESULTS.md）
 
 | 平台格 | 版本细节 | CLI | GUI | 证据 |
 |---|---|---|---|---|
