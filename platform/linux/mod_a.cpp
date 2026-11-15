@@ -78,11 +78,14 @@ void mod_acc(ModuleCtx& ctx) {
             int p1 = static_cast<int>(t.find(':'));
             int p2 = static_cast<int>(t.find(':', p1 + 1));
             int p3 = static_cast<int>(t.find(':', p2 + 1));
-            if (p2 < 0 || p3 < 0) return;
-            int gid = std::atoi(t.substr(p2 + 1, p3 - p2 - 1).c_str());
+            if (p1 <= 0 || p2 < 0 || p3 < 0 || t[0]=='+' || t[0]=='-') return;
+            std::uint32_t gid=0;
+            if(!account_uint32(t.substr(p2 + 1, p3 - p2 - 1),gid))return;
             std::string gname = t.substr(0, p1);
             std::string members = t.substr(p3 + 1);
-            if (gid == 0 && !members.empty() && members.find("root") == std::string::npos) {
+            std::istringstream member_stream(members);std::string member;bool nonroot=false;
+            while(std::getline(member_stream,member,','))if(!member.empty()&&member!="root")nonroot=true;
+            if (gid == 0 && nonroot) {
                 Finding f;
                 f.rule_id = "LNX.ACC.GID0.001";
                 f.severity = "low";

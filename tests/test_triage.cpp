@@ -262,6 +262,7 @@ CTFIR_TEST(account_scope_dc_and_unknown_fail_closed) {
     CHECK(account_local_sam_allowed("ServerNT"));CHECK(account_local_sam_allowed("WinNT"));
 }
 CTFIR_TEST(account_sid_identity_not_name_or_localized_group) {
+    std::uint32_t numeric=99;CHECK(!account_uint32("",numeric));CHECK(numeric==99);CHECK(!account_uint32("nonnumeric",numeric));
     CHECK(account_protected_admin("S-1-5-21-1-2-3-500"));
     CHECK(!account_protected_admin("S-1-5-21-1-2-3-1500"));
     CHECK(!account_protected_admin("S-1-5-32-500"));

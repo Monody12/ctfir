@@ -246,12 +246,15 @@ void mod_ad_files(ModuleCtx& ctx) {
     role.confidence = "high";
     role.object_ref = "ProductType=" + pt;
     role.advice_id = "ADVICE.AD.REVIEW.001";
-    if (to_lower(pt) == "lanmannt" || dc) {
+    if (to_lower(pt) == "lanmannt") {
         role.rationale =
             "本机呈现域控特征（ProductType=" + pt +
             (dc ? " 或存在 SYSVOL/NTDS/NTDS 服务" : "") +
             "）。域控没有普通本地SAM，WIN.ACC已跳过；NetUserEnum在DC可能枚举域对象，本工具不据此查询AD。"
             "已扫描 SYSVOL/GPP/NTDS 副本与凭据防护注册表；不查询 LDAP、不导出哈希。";
+    } else if(dc) {
+        role.confidence="medium";
+        role.rationale="存在SYSVOL/NTDS/服务线索或残留，但ProductType="+pt+"未确认当前域控角色；不得据此认定AD或本地SAM范围，WIN.ACC独立按ProductType判断。只扫描本地文件/注册表，不查LDAP、不导出哈希。";
     } else if (to_lower(pt) == "servernt") {
         role.rationale =
             "本机是独立或成员服务器（ProductType=ServerNT本身不区分域加入）。本地SAM不代表域账户全覆盖。"
